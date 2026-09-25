@@ -1,10 +1,11 @@
+import { surfaceStructure } from './structure-models.js';
 import { drawPlanetSphere } from './planet-render.js';
 import { satellitesOf, destination, surfaceOf, satellitePeriodSeconds } from './solar-bodies.js';
 import { drawOrbitStars } from './orbital-render.js';
 import { drawArkLight } from './ark-lights.js';
 import { facilityAt } from './solar-industry.js';
 import { structure, line } from './celestial-structures.js';
-import { planetAppearance, drawSurfaceWorks, drawOrbitalWorks } from './solar-world-effects.js';
+import { planetAppearance, surfaceSite, drawSurfaceWorks, drawOrbitalWorks } from './solar-world-effects.js';
 import { drawWorldTraffic, founderPosition } from './solar-travel.js';
 const TAU=Math.PI*2;
 const noise=n=>{n=Math.imul(n^(n>>>16),0x21f0aaad);n=Math.imul(n^(n>>>15),0x735a2d97);return((n^(n>>>15))>>>0)/4294967296;};
@@ -28,7 +29,7 @@ export function satelliteAt(body,w,h,time,x,y){
 function orbit(c,g,moon){c.save();c.translate(g.x,g.y);c.rotate(orbitTilt(moon));c.strokeStyle='#a9bcb51d';c.lineWidth=.7;c.beginPath();c.ellipse(0,0,g.r*moon.orbit,g.r*moon.orbit*.32,0,0,TAU);c.stroke();c.restore();}
 function satellite(c,moon,p,time,hover,o,compact=false){
   drawPlanetSphere(c,moon,p.x,p.y,p.r,{time,appearance:planetAppearance(moon,o)});
-  if(o.solar.talents[moon.id])structure(c,p.x+p.r*.3,p.y-p.r*.2,Math.max(.3,p.r*.12),'station');
+  if(o.solar.talents[moon.id])surfaceStructure(c,p,surfaceSite(moon,time,.25,.18),p.r*.018,'outpost');
   if(!compact||hover===moon.id){c.fillStyle=hover===moon.id?'#e5d4a6':'#8fa19b';c.font='9px system-ui,sans-serif';c.textAlign='center';c.fillText(moon.name,p.x,p.y+p.r+15);}
   if(hover===moon.id){c.strokeStyle='#d6c2939c';c.lineWidth=.6;c.beginPath();c.arc(p.x,p.y,p.r+5,0,TAU);c.stroke();}
 }
@@ -59,7 +60,7 @@ export function drawBeltScene(c,w,h,o,time){
   if(t.vestaMines){const x=w*.75,y=h*.36,vr=Math.min(w*.065,h*.095);rock(c,x,y,vr,22,time);line(c,[[x-vr*.3,y],[x,y+vr*.25],[x+vr*.2,y]],'#19292e',Math.max(1,vr*.12));structure(c,x-vr*.2,y-vr*.1,.8,'station');c.fillStyle='#81968b';c.font='9px system-ui';c.fillText('灶神星',x,y+vr+16);}
   const ceres={id:'ceres',name:'谷神星',color:'#9ca799',surface:'rock'},r=Math.min(w*.14,h*.21);
   drawPlanetSphere(c,ceres,w*.37,h*.49,r,{time});
-  if(t.ceresDepot){structure(c,w*.37+r*.22,h*.49,Math.max(.6,r*.023),'dome');structure(c,w*.37+r*.3,h*.49-r*.035,Math.max(.5,r*.015),'probe');}
+  if(t.ceresDepot)surfaceStructure(c,{x:w*.37,y:h*.49,r},surfaceSite(ceres,time,.25,.18),r*.017,'outpost');
   for(let i=0;i<Math.min(rank,5);i++){
     const x=w*(.14+i*.15)+Math.sin(time*.05+i)*6,y=h*(.33+noise(i+3)*.4);
     structure(c,x,y,1,'tug',{angle:-.15});

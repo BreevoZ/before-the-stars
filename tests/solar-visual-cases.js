@@ -12,6 +12,7 @@ import { createSolarVisualHistory, arkArc, dockPosition } from '../src/solar-tra
 import { marsDevelopment } from '../src/solar-world-effects.js';
 import { drawBattleScene, MARS_PALETTE } from '../src/render.js';
 import { createGame } from '../src/game.js';
+import { drawStructure, structureFrame, projectStructure, surfaceStructure, colonyLayout } from '../src/structure-models.js';
 import { drawPlanetSphere } from '../src/planet-render.js';
 import { BODIES } from '../src/solar-config.js';
 import { mountFixture } from './progression-cases.js';
@@ -20,6 +21,24 @@ import { updateOrbital } from '../src/orbital-game.js';
 import { setDebugLegacy } from '../src/debug.js';
 
 export function registerSolarVisualTests(test,assert,near){
+  test('VII visual models: ground frames preserve 3D lengths, depth and normals, including the poles',()=>{
+    for(const normal of [{x:0,y:0,z:1},{x:.6,y:0,z:.8},{x:0,y:1,z:0},{x:0,y:0,z:-1}]){
+      const frame=structureFrame({normal});for(const axis of frame)near(Math.hypot(...axis),1);
+      for(let i=0;i<3;i++)for(let j=i+1;j<3;j++)near(frame[i].reduce((sum,v,k)=>sum+v*frame[j][k],0),0);
+      const p=projectStructure([2,3,4],frame);near(Math.hypot(...p),Math.sqrt(29));near(projectStructure([0,0,1],frame)[2],normal.z);
+    }
+    for(const n of [2,3,4,12,22]){const layout=colonyLayout(n);assert(layout.slots.length===n);for(const [x,y]of layout.slots)assert((x/layout.rx)**2+(y/layout.ry)**2<1);}
+  });
+  test.browser('VII visual models: solid faces replace outlines, turn in depth and disappear behind the globe',()=>{
+    const c=canvas(260,220),x=c.getContext('2d'),draw=(kind,options)=>{x.clearRect(0,0,260,220);drawStructure(x,130,130,9,kind,options);return c.toDataURL();};
+    x.stroke=()=>{throw Error('A model must not paint a screen-facing contour');};const images=new Set();
+    for(const kind of ['collector','outpost','station','dock','tug','colony','array','balloon','probe']){
+      const options={yaw:.3,pitch:.6,detail:{slots:4,ages:[1,2,4,5]}},raw=JSON.stringify(options),a=draw(kind,options);images.add(a);
+      assert(draw(kind,{...options,yaw:1.1})!==a,kind);assert(draw(kind,options)===a&&JSON.stringify(options)===raw);
+    }assert(images.size===9);
+    x.clearRect(0,0,260,220);const empty=c.toDataURL(),g={x:130,y:110,r:85};surfaceStructure(x,g,{x:0,y:0,z:-1},3,'outpost');assert(c.toDataURL()===empty);
+    surfaceStructure(x,g,{x:0,y:0,z:1},3,'outpost');assert(c.toDataURL()!==empty);
+  });
   test('VII visual history: arrivals are bounded, edge-triggered, read-only and never replayed after reload',()=>{
     const s=voyageFixture(),o=s.orbital,h=createSolarVisualHistory(),raw=serializeSession(s);assert(h.observe(o).length===0&&serializeSession(s)===raw);
     o.elapsed+=1;o.solar.facilities.venus=1;assert(h.observe(o).length===1);assert(h.observe(o).length===1);
@@ -34,12 +53,18 @@ export function registerSolarVisualTests(test,assert,near){
     w.growth={step:3,progress:30};assert(marsDevelopment(o).elevator&&marsDevelopment(o).building===.5&&!domeHouseholds(o).some(h=>h.kind==='uplifted'));
     w.growth={step:10,progress:150};assert(marsDevelopment(o).rings===7&&marsDevelopment(o).green===.5);
   });
-  function canvas(w=660,h=420){const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
+  // These detached canvases are read back after every frame.
+  function canvas(w=660,h=420){const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d',{willReadFrequently:true});return c;}
+  test.browser('VII visual globe: first frame and cached night shading remain identical across canvas sizes',()=>{
+    for(const size of [26,240,420]){const c=canvas(size,size),x=c.getContext('2d'),draw=()=>{x.clearRect(0,0,size,size);drawPlanetSphere(x,destination('mars'),size/2,size/2,size*.42,{reducedMotion:true});return c.toDataURL();};const first=draw();for(let n=0;n<3;n++)assert(draw()===first,`Unstable shading at ${size}px`);}
+  });
   function worldFrame(c,body,o,quiet=false,time=0){drawWorldScene(c.getContext('2d'),c.width,c.height,destination(body),{...o,elapsed:time},{ambientTime:time,reducedMotion:quiet});return c.toDataURL();}
   for(const [body,keys]of Object.entries(WORLD_EFFECTS))for(const key of keys)test.browser(`VII visual effect: ${body}/${key} changes the view, stays deterministic and freezes with reduced motion`,()=>{
     const o=visualFixture().orbital,c=canvas();o.solar.facilities[body]=3;const before=JSON.stringify(o);let different=false;
     const active={...o,solar:{...o.solar,talents:{...o.solar.talents,[key]:1}}},activeBefore=JSON.stringify({...o,solar:{...o.solar,talents:{...o.solar.talents,[key]:1}}});
     for(const t of [0,9,30,65]){if(worldFrame(c,body,o,false,t)!==worldFrame(c,body,active,false,t)){different=true;break;}}
+    // A moon installation may be on the far hemisphere in the parent view.
+    if(!different&&SATELLITES.some(m=>m.id===key))different=worldFrame(c,key,o,false,0)!==worldFrame(c,key,active,false,0);
     assert(different,`${key} has no visible effect`);const quiet=worldFrame(c,body,active,true,0);assert(worldFrame(c,body,active,true,43)===quiet,`${key} reduced motion`);
     assert(JSON.stringify(o)===before&&JSON.stringify(active)===activeBefore);const first=worldFrame(c,body,active,false,17);assert(worldFrame(c,body,active,false,17)===first);
   });
@@ -79,7 +104,7 @@ export function registerSolarVisualTests(test,assert,near){
     const o=visualFixture().orbital,c=canvas(),x=c.getContext('2d'),draw=(quiet=true,time=0)=>{paint(x,660,420,{...o,elapsed:time},{time,ambientTime:time,reducedMotion:quiet});return c.toDataURL();};
     const a=draw();o.solar.talents[key]=1;assert(draw()!==a,key);assert(draw(true,51)===draw());
   });
-  test.browser('VII visual star: self luminous core, coronal silhouette and static reduced motion',()=>{
+  test.browser('VII visual star: self luminous core, smooth corona without spikes and static reduced motion',()=>{
     const c=canvas(180,180),x=c.getContext('2d'),draw=(t,q)=>{x.clearRect(0,0,180,180);drawStar(x,90,90,18,{time:t,reducedMotion:q});return c.toDataURL();};
     const a=draw(0,false);assert(draw(40,false)!==a&&draw(40,true)===a);const pixels=x.getImageData(0,0,180,180).data,light=(dx,dy)=>pixels[((90+dy)*180+90+dx)*4];assert(Math.abs(light(-6,0)-light(6,0))<25&&light(0,0)>240);
   });

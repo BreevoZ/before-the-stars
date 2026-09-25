@@ -108,15 +108,26 @@ function rocky(c,body,r,spin,tilt){
       c.strokeStyle='#e2e6d033';c.lineWidth=Math.max(.45,r*.003);c.beginPath();c.arc(0,0,cr,-.9,.9);c.stroke();});
   }
 }
-const masks=new WeakMap();
-function nightMask(c,angle){
-  let cache=masks.get(c);if(!cache){cache=new Map();masks.set(c,cache);}const key=Math.round(angle*80)/80;if(cache.has(key))return cache.get(key);
-  const canvas=c.canvas.ownerDocument.createElement('canvas');canvas.width=canvas.height=128;const ctx=canvas.getContext('2d'),image=ctx.createImageData(128,128);
-  for(let y=0;y<128;y++)for(let x=0;x<128;x++){
-    const nx=(x+.5)/64-1,ny=(y+.5)/64-1,z2=1-nx*nx-ny*ny;if(z2<=0)continue;
-    const light=(nx*Math.cos(key)+ny*Math.sin(key))*.94+Math.sqrt(z2)*.34,i=(y*128+x)*4;
-    image.data[i]=7;image.data[i+1]=16;image.data[i+2]=23;image.data[i+3]=Math.round(clamp(.5-light*2.8)*158);
-  }ctx.putImageData(image,0,0);if(cache.size>=12)cache.delete(cache.keys().next().value);cache.set(key,canvas);return canvas;
+// Vector isophotes on the sphere. Each band follows n · sun, so the
+// terminator curves round the globe; there is no low-resolution mask bitmap.
+const nightPaths=new WeakMap();
+function shadeNight(c,r,angle){
+  const doc=c.canvas.ownerDocument;let bands=nightPaths.get(doc);
+  if(!bands){bands=[];const Path=doc.defaultView.Path2D,steps=32;
+    for(let layer=0;layer<steps;layer++){
+      const k=(.5-layer/steps)/2.8,path=new Path(),points=[];
+      for(let j=0;j<=96;j++){
+        const y=-1+j/48,R=Math.sqrt(Math.max(0,1-y*y)),limit=.94*R;
+        const x=k<=-limit?-R:k>=limit?R:(.94*k-.34*Math.sqrt(Math.max(0,.9992*R*R-k*k)))/.9992;
+        points.push([x,y]);
+      }
+      points.forEach(([x,y],i)=>i?path.lineTo(x,y):path.moveTo(x,y));
+      for(let j=96;j>=0;j--){const y=-1+j/48;path.lineTo(-Math.sqrt(Math.max(0,1-y*y)),y);}path.closePath();
+      const step=158/255/steps;bands.push({path,alpha:step/(1-layer*step)});
+    }nightPaths.set(doc,bands);
+  }
+  c.save();c.rotate(angle);c.scale(r,r);
+  for(const {path,alpha}of bands){c.fillStyle=`rgba(7,16,23,${alpha})`;c.fill(path);}c.restore();
 }
 function rings(c,r,settings,front){
   c.save();c.rotate(settings.tilt);c.scale(1,.32);
@@ -136,7 +147,7 @@ export function drawPlanetSphere(ctx,body,x,y,r,{time=0,sunAngle=-.4,reducedMoti
   const palette=PALETTES[body.id]??(body.surface==='ice'?['#b8c3b5','#a0afa3','#697d76']:body.surface==='volcanic'?['#b8ae85','#9b9876','#697766']:['#a9b3a1','#7f8f83','#56675f']);
   ctx.save();ctx.translate(x,y);if(profile.rings)rings(ctx,r,profile.rings,false);
   if(profile.atmosphere){const edge=1.07+(appearance.terraform??0)*.015,glow=ctx.createRadialGradient(0,0,r*.97,0,0,r*edge);glow.addColorStop(0,`${profile.atmosphere}00`);glow.addColorStop(.5,`${profile.atmosphere}20`);glow.addColorStop(1,`${profile.atmosphere}00`);ctx.save();ctx.globalAlpha*=1-(appearance.winter??0)*.8;disc(ctx,0,0,r*edge,glow);ctx.restore();}
-  const g=ctx.createRadialGradient(-r*.25,-r*.3,r*.1,0,0,r);g.addColorStop(0,palette[0]);g.addColorStop(.7,palette[1]);g.addColorStop(1,palette[2]);disc(ctx,0,0,r,g);
+  const g=ctx.createRadialGradient(Math.cos(sunAngle)*r*.25,Math.sin(sunAngle)*r*.25,r*.1,0,0,r);g.addColorStop(0,palette[0]);g.addColorStop(.7,palette[1]);g.addColorStop(1,palette[2]);disc(ctx,0,0,r,g);
   ctx.save();ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.clip();
   if(profile.surface==='gas')gas(ctx,body,r,spin,tilt);
   else if(profile.surface==='cloud')cloud(ctx,body,r,spin,tilt);
@@ -152,7 +163,7 @@ export function drawPlanetSphere(ctx,body,x,y,r,{time=0,sunAngle=-.4,reducedMoti
     const dust=ctx.createRadialGradient(r*.3,-r*.2,0,r*.3,-r*.2,r*(.1+spread*2));dust.addColorStop(0,'#8b8e80e8');dust.addColorStop(.6,'#727971bd');dust.addColorStop(1,'#72797100');disc(ctx,r*.3,-r*.2,r*(.1+spread*2),dust);
     for(let i=0;i<14;i++)patch(ctx,r,spin*.2+time*.003,tilt,i*2.4,Math.sin(i)*1.1,.5,.11,'#b0afa116');ctx.restore();
   }
-  ctx.drawImage(nightMask(ctx,sunAngle),-r,-r,r*2,r*2);ctx.restore();
+  shadeNight(ctx,r,sunAngle);ctx.restore();
   ctx.strokeStyle='#acbca42b';ctx.lineWidth=.65;ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.stroke();
   if(profile.rings)rings(ctx,r,profile.rings,true);ctx.restore();
 }
