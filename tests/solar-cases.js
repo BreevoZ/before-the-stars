@@ -137,7 +137,7 @@ export function registerSolarTests(test, assert, near) {
     assert(buildFacility(s,'mercury')&&reachNeed(o,'belt')==='需小行星采矿'&&purchaseSolarTalent(s,'mining'));
     const slow=legSeconds(legDistance('mars','jupiter'));assert(route(o,'jupiter').seconds===legSeconds(legDistance('mars','jupiter'),1.6)&&route(o,'jupiter').seconds<slow);
     assert(buildFacility(s,'belt')&&buildFacility(s,'jupiter'));land();
-    assert(reachNeed(o,'saturn')==='需深空推进'&&purchaseSolarTalent(s,'deepDrive')&&buildFacility(s,'saturn')&&buildFacility(s,'uranus'));
+    assert(reachNeed(o,'saturn')==='需深空推进'&&!purchaseSolarTalent(s,'deepDrive')&&purchaseSolarTalent(s,'uplift')&&purchaseSolarTalent(s,'deepDrive')&&buildFacility(s,'saturn')&&buildFacility(s,'uranus'));
     assert(reachNeed(o,'neptune')==='需深空中继'&&purchaseSolarTalent(s,'relay')&&arksMoored(o)===1&&buildFacility(s,'neptune')&&arksMoored(o)===0);
     raw=serializeSession(s);assert(serializeSession(parseSession(raw))===raw);land();
     // Seven arks, seven stations: the belt's forge is the way to more.
@@ -146,7 +146,7 @@ export function registerSolarTests(test, assert, near) {
     const venus=facilityRate(o,'venus');assert(purchaseSolarTalent(s,'refinery')&&facilityRate(o,'venus')===venus*2);
     const industry=industryRate(o);assert(purchaseSolarTalent(s,'solarSail')&&purchaseSolarTalent(s,'smelter'));near(industryRate(o),industry*1.5);
     // The axis is gold and leads to the Sun (VIII); Mars is one green region among the others.
-    assert(['heat','mining','deepDrive','relay','stellar'].every(k=>SOLAR_TALENTS[k].gold&&SOLAR_TALENTS[k].x===SOLAR_TALENTS.voyage.x)&&!SOLAR_TALENTS.harbor.gold&&!SOLAR_TALENTS.uplift.gold);
+    assert(['heat','mining','uplift','deepDrive','relay','stellar'].every(k=>SOLAR_TALENTS[k].gold&&SOLAR_TALENTS[k].x===SOLAR_TALENTS.voyage.x)&&!SOLAR_TALENTS.harbor.gold&&!SOLAR_TALENTS.dome.gold);
   });
   test('Satellites: each moon branches off its planet, needs that foothold, costs no ark and does what its node says', () => {
     const s=voyageFixture(),o=s.orbital,run=n=>{for(let i=0;i<Math.round(n*30);i++)updateOrbital(s,1/30);},land=()=>{while(o.solar.flights.length)run(1);};
@@ -175,7 +175,7 @@ export function registerSolarTests(test, assert, near) {
   test('Pluto: the relay opens the Kuiper belt; its station takes an ark like any other, Charon doubles it, comets shorten flights and the cold archive keeps more', () => {
     const s=voyageFixture(),o=s.orbital,run=n=>{for(let i=0;i<Math.round(n*30);i++)updateOrbital(s,1/30);},land=()=>{while(o.solar.flights.length)run(1);};
     setDebugLegacy(s,'1e13');run(PIONEER.seconds+1);
-    for(const key of ['harbor','heat','mining','deepDrive'])assert(purchaseSolarTalent(s,key),key);
+    for(const key of ['harbor','heat','mining','uplift','deepDrive'])assert(purchaseSolarTalent(s,key),key);
     assert(SOLAR_TALENTS.pluto.column==='pluto'&&SOLAR_TALENTS.pluto.y===SOLAR_TALENTS.neptune.y&&SOLAR_TALENTS.pluto.x-SOLAR_TALENTS.relay.x===SOLAR_TALENTS.relay.x-SOLAR_TALENTS.neptune.x,'Neptune and Pluto mirror each other');
     assert(reachNeed(o,'pluto')==='需深空中继'&&purchaseSolarTalent(s,'relay')&&buildFacility(s,'pluto'));land();
     const rate=facilityRate(o,'pluto');assert(rate>0&&purchaseSolarTalent(s,'charon')&&facilityRate(o,'pluto')===rate*2);
@@ -183,7 +183,7 @@ export function registerSolarTests(test, assert, near) {
     const produced=o.solar.produced;run(4);const base=Q.toNumber(Q.sub(o.solar.produced,produced));
     assert(purchaseSolarTalent(s,'coldArchive'));const again=o.solar.produced;run(4);near(Q.toNumber(Q.sub(o.solar.produced,again))/base,1.15,.05);
     assert(buildSolarViewModel(s,{view:'pluto'})['#colony-body-kind'].includes('矮行星')&&buildSolarViewModel(s,{view:'charon'})['#solar-body-note'].includes('冰氮前哨 ×2'));
-    const old=JSON.parse(serializeSession(s));old.version=31;old.orbital.version=17;delete old.orbital.solar.facilities.pluto;
+    const old=JSON.parse(serializeSession(s));old.version=31;old.orbital.version=17;delete old.orbital.solar.colonies.mars.growth;delete old.orbital.solar.facilities.pluto;
     for(const k of Object.keys(old.orbital.solar.talents))if(!V31_SOLAR_KEYS.includes(k)){delete old.orbital.solar.talents[k];delete old.orbital.solar.payments[k];}delete old.orbital.solar.payments.pluto;
     const next=parseSession(JSON.stringify(old)).orbital.solar;assert(next.facilities.pluto===0&&next.talents.charon===0,'v31 saves gain an unbuilt Pluto');
   });
@@ -210,7 +210,7 @@ export function registerSolarTests(test, assert, near) {
     assert(o.solar.colonies.mars.civs[0].age===Math.min(5,age+1),'Trained on the way');
     const fuse=fuseSeconds(o,'mars');assert(purchaseSolarTalent(s,'rations')&&fuseSeconds(o,'mars')===fuse*3);
     for(const key of ['terraform','shelters'])assert(purchaseSolarTalent(s,key),key);assert(winterSeconds(o,'mars')===WORLDS.mars.winter/2);
-    for(const key of ['uplift','envoys','arsenalLocks'])assert(purchaseSolarTalent(s,key),key);near(seizeLine(o),.5);assert(accordSeconds(o)===UPLIFT.accordSeconds/2);
+    for(const key of ['heat','mining','uplift','envoys','arsenalLocks'])assert(purchaseSolarTalent(s,key),key);near(seizeLine(o),.5);assert(accordSeconds(o)===UPLIFT.accordSeconds/2);
     const raw=serializeSession(s);assert(serializeSession(parseSession(raw))===raw);
   });
   test('Map v31: v29 saves are refunded their old reach talents, keep a dome by granting 火星港 free, and start the axis unbought', () => {
@@ -246,7 +246,7 @@ export function registerSolarTests(test, assert, near) {
   test('Transfer: an idle Earth civilization flies to the Mars dome, pays by age and window, frees its site and works on arrival', () => {
     const s=voyageFixture(),o=s.orbital,run=seconds=>{for(let i=0;i<Math.round(seconds*30);i++)updateOrbital(s,1/30);};setDebugLegacy(s,'1e13');
     assert(solarTalentState(s,'harbor')==='transit'&&solarTalentState(s,'dome')==='prerequisite'&&!purchaseSolarTalent(s,'dome'),'The dome waits for the Mars harbour');
-    run(95);assert(purchaseSolarTalent(s,'harbor')&&purchaseSolarTalent(s,'dome')&&purchaseSolarTalent(s,'transfer')&&solarTalentState(s,'uplift')==='ready');
+    run(95);assert(purchaseSolarTalent(s,'harbor')&&purchaseSolarTalent(s,'dome')&&purchaseSolarTalent(s,'transfer')&&solarTalentState(s,'uplift')==='prerequisite');
     run(70);assert(o.phase==='living');const civ=o.civilizations.find(c=>c.alive&&!c.warId);assert(civ&&transferState(s,civ.id)==='ready');
     const quote=transferQuote(o,civ),wallet=s.permanent.legacy;assert(Q.eq(quote.cost,COLONY_RULES.transferBase*2**(civ.age-1)*(quote.open?1:COLONY_RULES.lateCost)));
     assert(transferCivilization(s,civ.id)&&!o.civilizations.some(c=>c.id===civ.id)&&o.solar.transfers.length===1&&Q.eq(s.permanent.legacy,Q.sub(wallet,quote.cost)));

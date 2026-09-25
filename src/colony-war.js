@@ -38,20 +38,70 @@ export const COLONY_WAR = Object.freeze({
 export const COLONIST_BASE = 16384;
 const M = 2 ** 20;
 export const UPLIFT = Object.freeze({ accordCost: 64 * M, accordSeconds: 60, seizeCost: 128 * M, seizeThreshold: .35, rate: 4, warlike: 1 });
-export const emptyWorld = () => ({ phase: 'living', remaining: 0, civs: [], wars: [], uplifted: [], nextWar: 0, fuse: 0, nuclear: 0 });
+export const emptyWorld = () => ({ phase: 'living', remaining: 0, civs: [], wars: [], uplifted: [], growth: { step: 0, progress: 0 }, nextWar: 0, fuse: 0, nuclear: 0 });
+
+// ── The uplifted civilization's own VI ── One per planet. Once it has signed, it
+// develops the world by itself, step by step: one great dome, the survey of the
+// surface, a space elevator, a seven-segment ring habitat (like ours around
+// Earth) and at last a greener planet. The newcomers we ship in live under its
+// watch: their wars pay out to us, and when they burn the planet it survives.
+// The player may fund the current step (援建) to finish it at once.
+const G = 2 ** 30;
+export const GROWTH = Object.freeze([
+  { key: 'grandDome', name: '大穹顶', seconds: 90, cost: 256 * M, text: '各座穹顶连成一整座大穹顶：火星多住两户。' },
+  { key: 'survey', name: '地表探索', seconds: 120, cost: 512 * M, text: '走出穹顶勘察火星：殖民战争与核毁灭的结算 ×2。' },
+  { key: 'elevator', name: '火星太空电梯', seconds: 150, cost: G, text: '从赤道升起的电梯：转运到火星的价格减半，升格文明迁往轨道，不再占用穹顶。' },
+  ...Array.from({ length: 7 }, (_, i) => ({ key: `ring${i + 1}`, name: `环火星生存空间 · 第 ${i + 1} 段`, seconds: 60, cost: 2 * G * 2 ** i, text: '每一段环：火星居民产出与结算 ×1.5。' })),
+  { key: 'green', name: '绿化火星', seconds: 300, cost: 512 * G, text: '大气变厚、第一片植被：火星不再稀缺（居民产出 ×1.33），核冬天减半。' },
+].map(Object.freeze));
+// Older saves (and worlds before v34) have no development yet: read them as step 0.
+const stepOf = w => w?.growth?.step ?? 0;
+const growthDone = (w, key) => stepOf(w) > GROWTH.findIndex(g => g.key === key);
+export const ringSegments = w => Math.max(0, Math.min(7, stepOf(w) - 3));
+// What the development has built so far, as numbers the colony reads.
+export const growthHouseholds = w => growthDone(w, 'grandDome') ? 2 : 0;
+export const upliftedInOrbit = w => growthDone(w, 'elevator');
+export const growthSettlement = w => (growthDone(w, 'survey') ? 2 : 1) * 1.5 ** ringSegments(w);
+export const growthIncome = w => 1.5 ** ringSegments(w) * (growthDone(w, 'green') ? 4 / 3 : 1);
+export const growthTransfer = w => growthDone(w, 'elevator') ? .5 : 1;
+export const growthWinter = w => growthDone(w, 'green') ? .5 : 1;
+export const growthStep = w => GROWTH[stepOf(w)] ?? null;
+export const growthFundCost = w => growthStep(w)?.cost ?? null;
+export function fundGrowthState(s, key) {
+  const w = s.orbital?.solar.colonies[key];
+  if (!w?.uplifted.length) return 'none';
+  if (!growthStep(w)) return 'done';
+  return Q.gte(s.permanent.legacy, growthFundCost(w)) ? 'ready' : 'legacy';
+}
+export function fundGrowth(s, key) {
+  if (fundGrowthState(s, key) !== 'ready') return false;
+  const o = s.orbital, w = o.solar.colonies[key], cost = growthFundCost(w);
+  s.permanent.legacy = Q.sub(s.permanent.legacy, cost); (o.solar.payments.growth ??= []).push(Q.of(cost));
+  w.growth.step++; w.growth.progress = 0; return true;
+}
+function advanceGrowth(o, key, dt) {
+  const w = o.solar.colonies[key], step = growthStep(w);
+  if (!w.uplifted.length || !step) return null;
+  w.growth.progress += dt;
+  if (w.growth.progress < step.seconds) return null;
+  w.growth.step++; w.growth.progress = 0;
+  return `${WORLDS[key].name}：${w.uplifted[0].name}建成「${step.name}」。`;
+}
 export const colonistRate = (civ, world = 'mars') => COLONIST_BASE * 2 ** (civ.age - 1) * WORLDS[world].income;
 // Uplifted civilizations work through winters: they are past the filter.
 export const upliftedRate = (world = 'mars') => COLONIST_BASE * 2 ** (FINAL_AGE - 1) * WORLDS[world].income * UPLIFT.rate;
 // Talents lift what residents and uplifted civilizations produce (温室气体输送, 大气改造, 木卫二…).
-export const worldIncome = (o, world) => { const w = o.solar.colonies[world];
-  return (w.phase === 'living' ? w.civs.reduce((sum, c) => sum + colonistRate(c, world), 0) * effectProduct(o, 'colonists') : 0) + w.uplifted.length * upliftedRate(world) * effectProduct(o, 'uplifted'); };
+// Residents at war under an uplifted civilization's watch pay half again: it runs their wars for us.
+export const worldIncome = (o, world) => { const w = o.solar.colonies[world], watch = w.uplifted.length ? 1.5 : 1;
+  const residents = w.phase === 'living' ? w.civs.reduce((sum, c) => sum + colonistRate(c, world) * (c.warId ? watch : 1), 0) * effectProduct(o, 'colonists') * growthIncome(w) : 0;
+  return residents + w.uplifted.length * upliftedRate(world) * effectProduct(o, 'uplifted'); };
 // The colony's own clocks and thresholds, as the talents set them.
 export const fuseSeconds = (o, key) => WORLDS[key].fuse * effectProduct(o, 'fuse');
-export const winterSeconds = (o, key) => WORLDS[key].winter * effectProduct(o, 'marsWinter');
+export const winterSeconds = (o, key) => WORLDS[key].winter * effectProduct(o, 'marsWinter') * growthWinter(o.solar.colonies[key]);
 export const accordSeconds = o => UPLIFT.accordSeconds * effectProduct(o, 'accordTime');
 export const seizeLine = o => UPLIFT.seizeThreshold + effectSum(o, 'seizeLine');
 export const colonyIncome = o => Object.keys(WORLDS).reduce((sum, world) => sum + worldIncome(o, world), 0);
-export const settlementValue = (civs, world, seconds) => Math.floor(civs.reduce((sum, c) => sum + colonistRate(c, world), 0) * seconds);
+export const settlementValue = (civs, world, seconds, scale = 1) => Math.floor(civs.reduce((sum, c) => sum + colonistRate(c, world), 0) * seconds * scale);
 
 // ── Watching ── not saved: a reload simply starts watching from the abstract state.
 const watched = new WeakMap(), live = new WeakMap();
@@ -124,6 +174,7 @@ export function updateColonies(o, dt) {
   let reward = 0; const logs = [];
   for (const key of Object.keys(WORLDS)) {
     const world = o.solar.colonies[key], env = WORLDS[key];
+    const built = advanceGrowth(o, key, dt); if (built) logs.push(built);
     if (world.phase === 'winter') {
       world.remaining = Math.max(0, world.remaining - dt);
       if (world.remaining <= 1e-8) { world.phase = 'living'; world.remaining = 0; logs.push(`${env.name}的核冬天结束，穹顶可以再次接收文明。`); }
@@ -162,7 +213,7 @@ export function resolveColonyWar(o, key, war, result) {
   // the player holds both arsenals.
   if (result !== 'draw' && !war.seized && civs.every(c => c.age === FINAL_AGE)) return burnWorld(o, key);
   const losers = result === 'draw' ? civs : [civs[result === 'won' ? 1 : 0]];
-  const reward = settlementValue(losers, key, COLONY_WAR.defeatSeconds);
+  const reward = settlementValue(losers, key, COLONY_WAR.defeatSeconds, growthSettlement(world));
   world.civs = world.civs.filter(c => !losers.includes(c));
   const winner = civs.find(c => !losers.includes(c));
   if (winner && war.seized) { for (const c of civs) c.warId = null; const text = uplift(o, key, winner, 'seizure');
@@ -177,10 +228,13 @@ function uplift(o, key, civ, via) {
   world.civs = world.civs.filter(c => c !== civ);
   const { progress, warId, accord, ...kept } = civ;
   world.uplifted.push({ ...kept, age: FINAL_AGE, via, upliftedAt: o.elapsed });
-  return `${env.name}：${civ.name}${via === 'accord' ? '签署存续协议' : '在你的控制下停战'}，成为升格文明，永久留在穹顶。`;
+  // It is the only one: any other negotiation on this planet ends here.
+  for (const c of world.civs) c.accord = null;
+  world.growth = { step: 0, progress: 0 };
+  return `${env.name}：${civ.name}${via === 'accord' ? '签署存续协议' : '在你的控制下停战'}，成为${env.name}唯一的升格文明，开始自己开发这颗行星。`;
 }
 function burnWorld(o, key) {
-  const world = o.solar.colonies[key], env = WORLDS[key], reward = settlementValue(world.civs, key, COLONY_WAR.nuclearSeconds);
+  const world = o.solar.colonies[key], env = WORLDS[key], reward = settlementValue(world.civs, key, COLONY_WAR.nuclearSeconds, growthSettlement(world));
   for (const war of world.wars) live.delete(war);
   const winter = winterSeconds(o, key);
   world.civs = []; world.wars = []; world.fuse = 0; world.nuclear++; world.phase = 'winter'; world.remaining = winter;
@@ -197,6 +251,8 @@ export function accordState(s, key, id) {
   if (!upliftOpen(o)) return 'locked';
   if (!civ) return 'selection';
   if (civ.accord !== null) return 'negotiating';
+  // One uplifted civilization per planet, and one negotiation at a time.
+  if (world.uplifted.length || world.civs.some(c => c.accord !== null)) return 'occupied';
   if (!peaceful(civ)) return 'warlike';
   if (civ.age < FINAL_AGE) return 'age';
   if (civ.warId) return 'war';
@@ -213,6 +269,7 @@ export function seizeState(s, key, id) {
   if (!upliftOpen(o)) return 'locked';
   if (!war) return 'selection';
   if (war.seized) return 'seized';
+  if (world.uplifted.length) return 'occupied';
   if (war.sides.some(side => world.civs.find(c => c.id === side).age < FINAL_AGE)) return 'age';
   if (Math.min(...war.base) >= seizeLine(o)) return 'early';
   return Q.gte(s.permanent.legacy, UPLIFT.seizeCost) ? 'ready' : 'legacy';

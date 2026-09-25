@@ -10,7 +10,7 @@ import { AGES } from './game-config.js';
 import { reachNeed, solarTalentEffect } from './solar-tree-view-model.js';
 import { FACILITIES, arksMoored, arrivalAt, arrived, facilityRate, facilityState, industryRate, industryBoost, flightTo, route, pioneerAt } from './solar-industry.js';
 import { bodyById } from './solar-config.js';
-import { WORLDS, UPLIFT, accordState, seizeState, upliftedRate, fuseSeconds, seizeLine } from './colony-war.js';
+import { WORLDS, UPLIFT, GROWTH, accordState, seizeState, upliftedRate, fuseSeconds, seizeLine, growthStep, fundGrowthState, growthFundCost } from './colony-war.js';
 import { TENDENCIES } from './orbital-config.js';
 const temper=c=>TENDENCIES[c.tendency]?.name??'无倾向';
 const placeName=id=>id==='moon'?'月球':bodyById(id).name;
@@ -68,7 +68,7 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
       v[`#solar-war-${i}`]=`${a.name} ${AGES[a.age].numeral} ⚔ ${b.name} ${AGES[b.age].numeral} · 基地 ${Math.round(war.base[0]*100)}% : ${Math.round(war.base[1]*100)}% · ${watching===war.id?'观看中':'观看'}`;
       v[`#solar-war-${i}@aria-pressed`]=String(watching===war.id);
       // Seizing the arsenals: only in a final-age war, only at the brink.
-      const seize=seizeState(s,'mars',war.id);v[`#solar-seize-${i}@hidden`]=['locked','age'].includes(seize);v[`#solar-seize-${i}@disabled`]=seize!=='ready';
+      const seize=seizeState(s,'mars',war.id);v[`#solar-seize-${i}@hidden`]=['locked','age','occupied'].includes(seize);v[`#solar-seize-${i}@disabled`]=seize!=='ready';
       v[`#solar-seize-${i}`]={ready:`接管双方核武 · ${Q.format(UPLIFT.seizeCost)} Legacy`,early:`接管核武 · 等待一方基地跌破 ${Math.round(seizeLine(o)*100)}%`,seized:'核武已接管 · 胜者将升格',legacy:`${Q.format(UPLIFT.seizeCost)} Legacy · 遗产不足`}[seize]??'';});
     for(let i=0;i<3;i++){v[`#solar-war-${i}@hidden`]=!world.wars[i];if(!world.wars[i])v[`#solar-seize-${i}@hidden`]=true;}
     const shown=world.wars.find(w=>w.id===watching);v['#solar-battle-panel@hidden']=!shown;
@@ -85,10 +85,16 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
     for(let i=0;i<10;i++){const row=rows[i],accord=row?.civ?accordState(s,'mars',row.civ.id):'locked';
       v[`#solar-colonist-${i}@hidden`]=!row;v[`#solar-colonist-text-${i}`]=row?.text??'';v[`#solar-colonist-${i}@data-transit`]=String(Boolean(row?.transit));
       v[`#solar-colonist-${i}@data-accord`]=String(row?.civ?.accord!=null);
-      v[`#solar-colonist-act-${i}@hidden`]=['locked','selection','warlike'].includes(accord);v[`#solar-colonist-act-${i}@disabled`]=accord!=='ready';
-      v[`#solar-colonist-act-${i}`]={ready:`签署存续协议 · ${Q.format(UPLIFT.accordCost)}`,negotiating:`谈判中 ${Math.floor((row?.civ?.accord??0)*100)}%`,age:'第五时代后可谈判',war:'交战中 · 无法谈判',legacy:`${Q.format(UPLIFT.accordCost)} · 遗产不足`}[accord]??'';}
+      v[`#solar-colonist-act-${i}@hidden`]=['locked','selection','warlike'].includes(accord)||accord==='occupied'&&world.uplifted.length>0;v[`#solar-colonist-act-${i}@disabled`]=accord!=='ready';
+      v[`#solar-colonist-act-${i}`]={ready:`签署存续协议 · ${Q.format(UPLIFT.accordCost)}`,negotiating:`谈判中 ${Math.floor((row?.civ?.accord??0)*100)}%`,occupied:'另一场谈判进行中',age:'第五时代后可谈判',war:'交战中 · 无法谈判',legacy:`${Q.format(UPLIFT.accordCost)} · 遗产不足`}[accord]??'';}
     const uplifted=world.uplifted;v['#solar-uplifted@hidden']=!uplifted.length;
-    v['#solar-uplifted-title']=`升格文明 · ${uplifted.length} · +${Q.format(uplifted.length*upliftedRate('mars'))} Legacy/s`;
+    v['#solar-uplifted-title']=`火星唯一的升格文明 · +${Q.format(uplifted.length*upliftedRate('mars'))} Legacy/s`;
+    // Its own development: steps done, the one in progress, and 援建 to finish it now.
+    const step=growthStep(world),fund=fundGrowthState(s,'mars');
+    v['#solar-growth-now']=step?`正在建设「${step.name}」 · ${Math.floor(world.growth.progress/step.seconds*100)}% · ${step.text}`:'火星已经绿化：升格文明完成了这颗行星的开发。';
+    GROWTH.forEach((g,i)=>{v[`#solar-growth-step-${i}@class:done`]=i<world.growth.step;v[`#solar-growth-step-${i}@class:now`]=i===world.growth.step;});
+    v['#solar-growth-fund@hidden']=!step;v['#solar-growth-fund@disabled']=fund!=='ready';
+    v['#solar-growth-fund']=step?`援建「${step.name}」 · ${Q.format(growthFundCost(world))} Legacy${fund==='legacy'?' · 遗产不足':''}`:'';
     for(let i=0;i<10;i++){const c=uplifted[i];v[`#solar-uplifted-${i}@hidden`]=!c;v[`#solar-uplifted-${i}`]=c?`★ ${c.name} · ${c.via==='accord'?'签署存续协议':'核武被接管后停战'} · +${Q.format(upliftedRate('mars'))} Legacy/s`:'';}
     v['#solar-dome-caption']=sol.talents.dome?`${sol.talents.dome} / ${SOLAR_TALENTS.dome.costs.length} 座穹顶 · 每座两户 · ${residents.length+uplifted.length+flights.length} / ${cap} 已占用${uplifted.length?` · 其中 ${uplifted.length} 户已升格`:''}`:'火星尚无穹顶：在行星际星图中建起第一座。';
   }

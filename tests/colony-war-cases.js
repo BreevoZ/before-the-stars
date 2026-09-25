@@ -4,8 +4,8 @@ import { serializeSession, parseSession } from '../src/save.js';
 import { setDebugLegacy } from '../src/debug.js';
 import { updateOrbital } from '../src/orbital-game.js';
 import { Q } from '../src/quantity.js';
-import { simulateColonyWar, watchColonyWar, liveColonyWar, WORLDS, COLONY_WAR, colonistRate, updateColonies, UPLIFT, accordState, startAccord, seizeState, seizeArsenals, upliftedRate, colonyIncome } from '../src/colony-war.js';
-import { colonyCount } from '../src/solar-colony.js';
+import { GROWTH, fundGrowth, growthStep, ringSegments, simulateColonyWar, watchColonyWar, liveColonyWar, WORLDS, COLONY_WAR, colonistRate, updateColonies, UPLIFT, accordState, startAccord, seizeState, seizeArsenals, upliftedRate, colonyIncome } from '../src/colony-war.js';
+import { colonyCount, domeCapacity, transferQuote } from '../src/solar-colony.js';
 import { purchaseSolarTalent, transferState, transferCivilization, COLONY_RULES } from '../src/solar-colony.js';
 import { buildSolarViewModel } from '../src/solar-view-model.js';
 import { mountFixture } from './progression-cases.js';
@@ -18,6 +18,7 @@ export function toV29(record) {
   for (const k of Object.keys(sol.payments)) if (!['venus', 'mercury', 'belt', 'jupiter', 'transfers', 'accords', 'seizures', ...keys].includes(k)) delete sol.payments[k];
   for (const k of ['saturn', 'uranus', 'neptune', 'pluto']) delete sol.facilities[k];
   sol.flights = sol.flights.map(({ via, ...f }) => f);
+  delete sol.colonies.mars.growth; delete sol.payments.growth;
   return record;
 }
 const median = xs => { const s = [...xs].sort((a, b) => a - b); return s[s.length >> 1]; };
@@ -26,7 +27,7 @@ function batch(a, b, n = 300) { const rs = []; for (let i = 1; i <= n; i++) rs.p
 function marsFixture({ count = 2, age = null, uplift = false } = {}) {
   const s = voyageFixture(), o = s.orbital, run = n => { for (let i = 0; i < Math.round(n * 30); i++) updateOrbital(s, 1 / 30); };
   setDebugLegacy(s, 2 ** 36); run(65);
-  for (const key of ['harbor', 'dome', 'transfer', 'survey', 'fleet', ...(uplift ? ['uplift'] : [])]) purchaseSolarTalent(s, key);
+  for (const key of ['harbor', 'dome', 'transfer', 'survey', 'fleet', ...(uplift ? ['heat', 'mining', 'uplift'] : [])]) purchaseSolarTalent(s, key);
   run(70);
   for (let k = 0; k < count; k++) { const civ = o.civilizations.find(c => c.alive && !c.warId); if (age) { civ.age = age; civ.tendency = 0; } transferCivilization(s, civ.id); }
   // Stop the moment both land, before the fuse between them runs out.
@@ -125,7 +126,7 @@ export function registerColonyWarTests(test, assert, near) {
     while (o.solar.transfers.length) run(.1); run(WORLDS.mars.fuse + .5);
     for (const c of world.civs) { c.age = 5; c.progress = 0; } world.wars[0].base[1] = 1e-6; run(1);
     assert(world.phase === 'winter' && world.uplifted.length === 1 && colonyIncome(o) === upliftedRate('mars'), 'Uplifted work through the winter');
-    assert(buildSolarViewModel(s, { view: 'mars' })['#solar-uplifted-title'].includes('升格文明 · 1'));
+    assert(buildSolarViewModel(s, { view: 'mars' })['#solar-uplifted-title'].includes('唯一的升格文明'));
   });
   test('Uplift: seizing both arsenals at the brink ends a final-age war without annihilation and uplifts the winner; survivors of Mars turn warlike', () => {
     const { s, o, run } = marsFixture({ uplift: true }), world = o.solar.colonies.mars; run(WORLDS.mars.fuse + .5);
@@ -163,5 +164,27 @@ export function registerColonyWarTests(test, assert, near) {
       assert(parseSession(w.__storage.getItem('before-the-stars.debug.v1')).orbital.solar.payments.accords.length === 1);
       assert(!d.body.dataset.fixtureError, d.body.dataset.fixtureError);
     } finally { frame.remove(); }
+  });
+  test('Uplifted world: one civilization per planet develops it step by step, runs the newcomers\' wars and can be funded', () => {
+    const { s, o, run } = marsFixture({ count: 1, age: 5, uplift: true }), world = o.solar.colonies.mars, civ = world.civs[0];
+    assert(startAccord(s, 'mars', civ.id)); run(UPLIFT.accordSeconds + 1);
+    assert(world.uplifted.length === 1 && world.growth.step === 0 && growthStep(world).key === 'grandDome');
+    // Only one: a second final-age peaceful newcomer cannot sign any more.
+    const newcomer = { id: 'c9-7', name: 'n', age: 5, tendency: 0, doctrine: 0, arrivedAt: o.elapsed, progress: 0, warId: null, accord: null };
+    world.civs.push(newcomer); assert(accordState(s, 'mars', newcomer.id) === 'occupied'); world.civs.pop();
+    // Time builds the great dome: two more households.
+    setDebugLegacy(s, 2 ** 39); const cap = domeCapacity(o); run(GROWTH[0].seconds + .5); assert(world.growth.step === 1 && domeCapacity(o) === cap + 2);
+    // Funding finishes the survey and the elevator at once; the uplifted civilization moves to orbit.
+    const wallet = s.permanent.legacy; assert(fundGrowth(s, 'mars') && fundGrowth(s, 'mars') && world.growth.step === 3 && Q.lt(s.permanent.legacy, wallet));
+    assert(colonyCount(o) === o.solar.transfers.length + world.civs.length, 'In orbit it no longer takes a household');
+    const civ2 = o.civilizations.find(c => c.alive && !c.warId), quote = transferQuote(o, civ2);
+    // Each ring segment multiplies what the residents produce.
+    const before = colonyIncome(o); world.civs.push({ ...newcomer, age: 2 }); const withResident = colonyIncome(o) - before;
+    for (let k = 0; k < 7; k++) assert(fundGrowth(s, 'mars')); assert(ringSegments(world) === 7);
+    assert(Math.abs((colonyIncome(o) - before) / withResident - 1.5 ** 7) < 1e-6, 'Seven segments, ×1.5 each');
+    const raw = serializeSession(s); assert(serializeSession(parseSession(raw)) === raw, 'Development round-trips');
+    const fake = JSON.parse(raw); fake.orbital.solar.colonies.mars.uplifted.push({ ...fake.orbital.solar.colonies.mars.uplifted[0], id: 'c9-8' });
+    rejects(JSON.stringify(fake), 'One uplifted civilization per planet');
+    assert(quote.cost > 0);
   });
 }

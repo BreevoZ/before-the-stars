@@ -6,7 +6,7 @@ import { drawWorldScene, satelliteAt } from './solar-world-render.js';
 import { drawShipyard } from './shipyard-render.js';
 import { FACILITIES, buildFacility } from './solar-industry.js';
 import { transferCivilization } from './solar-colony.js';
-import { watchColonyWar, liveColonyWar, startAccord, seizeArsenals } from './colony-war.js';
+import { watchColonyWar, liveColonyWar, startAccord, seizeArsenals, GROWTH, fundGrowth } from './colony-war.js';
 import { drawDomes } from './dome-render.js';
 import { createRenderer } from './render.js';
 import { AGES } from './game-config.js';
@@ -42,6 +42,9 @@ export function createSolarUI(getSession,{openTree,replay,commit,openSolarTree})
   for(let i=0;i<10;i++){const li=document.createElement('li');li.id=`solar-colonist-${i}`;li.innerHTML=`<span id="solar-colonist-text-${i}"></span><button id="solar-colonist-act-${i}" type="button" hidden></button>`;el('solar-colonists').append(li);
     el(`solar-colonist-act-${i}`).addEventListener('click',()=>{const civ=getSession().orbital.solar.colonies.mars.civs[i];if(civ&&startAccord(getSession(),'mars',civ.id)){commit();sync();}});
     const up=document.createElement('li');up.id=`solar-uplifted-${i}`;up.hidden=true;el('solar-uplifted-list').append(up);}
+  // The uplifted civilization's development: one mark per step, and 援建.
+  for(const [i,g]of GROWTH.entries()){const li=document.createElement('li');li.id=`solar-growth-step-${i}`;li.title=g.name;el('solar-growth-steps').append(li);}
+  el('solar-growth-fund').addEventListener('click',()=>{if(fundGrowth(getSession(),'mars')){commit();sync();}});
   for(let i=0;i<3;i++)el(`solar-seize-${i}`).addEventListener('click',()=>{const war=getSession().orbital.solar.colonies.mars.wars[i];if(war&&seizeArsenals(getSession(),'mars',war.id)){commit();sync();}});
   el('solar-transfer-civ').addEventListener('change',sync);
   for(let i=0;i<3;i++)el(`solar-war-${i}`).addEventListener('click',()=>{const war=getSession().orbital.solar.colonies.mars.wars[i];if(!war)return;watching=watching===war.id?null:war.id;sync();});

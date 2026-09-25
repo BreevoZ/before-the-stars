@@ -109,3 +109,6 @@
 .solar-region-planet[data-reserved="true"]{background:none;border:1px dashed #9fb8a640;opacity:.5;box-shadow:none}
 .solar-region-name{position:absolute;font-size:15px;font-weight:400;letter-spacing:6px;color:#c9d4c2bf}.solar-region-name small{display:block;margin-top:8px;font-size:9px;letter-spacing:2px;color:var(--muted)}
 .solar-region-name[data-side="left"]{left:40px}.solar-region-name[data-side="right"]{right:40px;text-align:right}
+.solar-growth{margin-top:10px;font-size:10px;line-height:1.8;color:var(--solar-muted)}.solar-growth>p{margin:0 0 6px}
+.solar-growth-steps{list-style:none;display:flex;gap:4px;padding:0;margin:0 0 8px}.solar-growth-steps li{flex:1;height:3px;background:#9fb8a626}.solar-growth-steps li.done{background:var(--solar-brass)}.solar-growth-steps li.now{background:linear-gradient(90deg,var(--solar-brass),#9fb8a626)}
+#solar-growth-fund{padding:4px 0;min-height:0;font-size:10px;color:var(--solar-brass)}#solar-growth-fund:disabled{color:var(--solar-muted);cursor:default}

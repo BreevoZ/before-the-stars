@@ -7,7 +7,7 @@ import { Q } from './quantity.js';
 import { TAU } from './celestial-clock.js';
 import { bodyById, bodyAngle, orbitalPeriod } from './solar-config.js';
 import { FACILITIES, arrived, facilityState, buildFacility, flightFactor } from './solar-industry.js';
-import { emptyWorld, colonistRate, colonyIncome } from './colony-war.js';
+import { emptyWorld, colonistRate, colonyIncome, growthHouseholds, upliftedInOrbit, growthTransfer } from './colony-war.js';
 import { effectProduct, effectSum } from './solar-effects.js';
 export { colonistRate } from './colony-war.js';
 
@@ -57,7 +57,11 @@ export const SOLAR_TALENTS = Object.freeze({
   // The axis: each technology opens the next worlds out from the Sun.
   heat: axis('耐热外壳', 1, 'heatshield', 12 * M, { voyage: 1 }, '为方舟加装耐热外壳，让它能在水星与金星的高温中停靠。解锁：水星、金星。'),
   mining: axis('小行星采矿', 2, 'drill', 320 * M, { heat: 1 }, '在主带补给、造出聚变引擎：方舟航速 ×1.6。解锁：小行星带、木星。'),
-  deepDrive: axis('深空推进', 3, 'deepdrive', 16 * G, { mining: 1 }, '能穿越巨行星之间漫长空隙的推进：方舟航速 ×2.2。解锁：土星、天王星。'),
+  // Bringing another civilization to its own orbital age is part of the way on:
+  // the outer system waits until one colony can run a world by itself.
+  uplift: node('殖民地存续协议', SOLAR_AXIS, SOLAR_TIERS[2].top - 150, 'accord', 'axis', { costs: [192 * M], requires: { mining: 1 }, kind: 'keystone', gold: true,
+    description: '把我们签过的那份协议递给殖民文明：第五时代的和平居民可以谈判签署；两个第五时代文明交战、一方基地跌破 35% 时可以接管双方核武——败方覆灭但没有核毁灭，胜方升格。每颗行星只能有一个升格文明：它不再参战、不受核冬天影响，产出是第五时代居民的 4 倍，并会自己开发这颗行星（大穹顶、太空电梯、环行星生存空间……），管理之后运来的新文明。' }),
+  deepDrive: axis('深空推进', 3, 'deepdrive', 16 * G, { uplift: 1 }, '能穿越巨行星之间漫长空隙的推进：方舟航速 ×2.2。解锁：土星、天王星。'),
   relay: axis('深空中继', 4, 'relay', 128 * G, { deepDrive: 1 }, '在外太阳系布下通讯中继，方舟不再与火星失联。解锁：海王星、冥王星。'),
   stellar: node('恒星协议', SOLAR_AXIS, SOLAR_TIERS_TOP() - 250, 'dyson', 'axis', { planned: true, requires: { relay: 1 }, finale: true, kind: 'keystone', gold: true, gate: '需要一个升格文明',
     description: 'VII 的终点：把太阳系的工业与升格文明转向太阳，立项开发恒星本身，进入 VIII · 恒星。戴森群将在 VIII 中一步步建起。需要深空中继与至少一个升格文明。（后续开放）' }),
@@ -81,10 +85,8 @@ export const SOLAR_TALENTS = Object.freeze({
   shelters: talent('mars', [1, 2], '核冬天掩体', 'bunker', [256 * M], { terraform: 1 }, '深埋地下的掩体让火星更快复苏：火星核冬天的时长减半。'),
   transfer: talent('mars', [2, 0], '文明转运', 'transfer', [32 * M], { dome: 1 }, '从地球挑选一个不在交战的文明，装上方舟送往火星。地球的点位会空出来，新的文明照常萌芽。', { kind: 'keystone' }),
   rations: talent('mars', [2, 1], '穹顶配给', 'rations', [128 * M], { transfer: 1 }, '按户配给水和氧气：闲置的邻居要等三倍的时间才会开战。'),
-  uplift: talent('mars', [3, 0], '殖民地存续协议', 'accord', [192 * M], { transfer: 1 },
-    '让殖民文明越过大过滤器：第五时代的和平文明可以谈判签署存续协议；两个第五时代文明交战、一方基地跌破 35% 时，可以接管双方核武——败方覆灭但没有核毁灭，胜方升格。升格文明永久住在穹顶里，不再参战，产出是第五时代居民的 4 倍。', { kind: 'keystone' }),
-  envoys: talent('mars', [3, 1], '外交使团', 'envoy', [512 * M], { uplift: 1 }, '常驻穹顶的使团：存续协议的谈判时间减半。'),
-  arsenalLocks: talent('mars', [3, 2], '核武联锁', 'nukelock', [G], { envoys: 1 }, '提前在双方核武上装好联锁：一方基地跌破 50% 时就可以接管核武。'),
+  envoys: talent('mars', [3, 0], '外交使团', 'envoy', [512 * M], { transfer: 1 }, '常驻穹顶的使团：存续协议的谈判时间减半。'),
+  arsenalLocks: talent('mars', [3, 1], '核武联锁', 'nukelock', [G], { envoys: 1 }, '提前在双方核武上装好联锁：一方基地跌破 50% 时就可以接管核武。'),
   // ── Mercury: power, metal and heat. Columns: sails · furnace · dawn line · launcher.
   mercury: world('mercury', '日冕阵列', 'corona', 'heat', { facility: 'mercury' }),
   solarSail: talent('mercury', [0, 1], '光帆加速', 'solarsail', [256 * M], { mercury: 1 }, '水星的日冕为方舟张开光帆：所有方舟与转运方舟的航程缩短 30%。'),
@@ -224,15 +226,15 @@ export function windowTiming(o) {
 // ── Transfers ──
 // 冰水补给 lets each dome house one more household.
 export const householdsPerDome = o => COLONY_RULES.domeCapacity + effectSum(o, 'households');
-export const domeCapacity = o => o.solar.talents.dome * householdsPerDome(o);
+export const domeCapacity = o => o.solar.talents.dome * householdsPerDome(o) + growthHouseholds(o.solar.colonies.mars);
 export const fleetCapacity = o => 1 + effectSum(o, 'convoy');
 // Uplifted civilizations keep their place under the dome for good.
-export const colonyCount = o => o.solar.colonies.mars.civs.length + o.solar.colonies.mars.uplifted.length + o.solar.transfers.length;
+export const colonyCount = o => { const w = o.solar.colonies.mars; return w.civs.length + (upliftedInOrbit(w) ? 0 : w.uplifted.length) + o.solar.transfers.length; };
 export function transferQuote(o, civ) {
   const open = windowOpen(o), fuel = o.solar.talents.fuel > 0;
   const base = COLONY_RULES.transferBase * 2 ** (civ.age - 1);
   // 火卫一's elevator makes each launch cheaper; 火卫二's berth, each crossing shorter.
-  const cheaper = effectProduct(o, 'transferCost'), shorter = effectProduct(o, 'transferTime');
+  const cheaper = effectProduct(o, 'transferCost') * growthTransfer(o.solar.colonies.mars), shorter = effectProduct(o, 'transferTime');
   return { open, cost: Math.round((open ? base : base * (fuel ? COLONY_RULES.fuelLateCost : COLONY_RULES.lateCost)) * cheaper),
     seconds: COLONY_RULES.travelSeconds * (open ? 1 : fuel ? COLONY_RULES.fuelLateTravel : COLONY_RULES.lateTravel) * flightFactor(o) * shorter };
 }
