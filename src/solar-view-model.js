@@ -62,7 +62,7 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
     v['#solar-colony@data-winter']=String(winter);
     // What the planet is doing: its own winter, its wars, or the fuse between idle neighbours.
     v['#solar-colony-status']=winter?`火星核冬天：穹顶暂时无法居住，在途的方舟停在轨道上等待。地球不受影响。${world.nuclear>1?`（第 ${world.nuclear} 次）`:''}`
-      :world.wars.length?`${world.wars.length} 场战争 · 两个第五时代文明结束战争时，火星将核毁灭${sol.talents.uplift?'，除非你接管它们的核武':''}。`
+      :world.wars.length?`${world.wars.length} 场战争 · 两个第五时代文明结束战争时，火星将核毁灭${world.uplifted.length?'；升格文明不受影响，替你管理这些战争（交战居民产出 ×1.5）':sol.talents.uplift?'，除非你接管它们的核武':''}。`
       :idle>=2?`火星资源稀缺：闲置的邻居 ${Math.ceil(fuseSeconds(o,'mars')-world.fuse)} 秒内会开战。`:residents.length?'火星收入 ×0.75，战争伤害 ×1.5。':'';
     world.wars.forEach((war,i)=>{if(i>2)return;const [a,b]=war.sides.map(id=>residents.find(c=>c.id===id));
       v[`#solar-war-${i}`]=`${a.name} ${AGES[a.age].numeral} ⚔ ${b.name} ${AGES[b.age].numeral} · 基地 ${Math.round(war.base[0]*100)}% : ${Math.round(war.base[1]*100)}% · ${watching===war.id?'观看中':'观看'}`;
