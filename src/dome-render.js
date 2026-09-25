@@ -1,68 +1,59 @@
-// Mars domes in cross-section: one glass dome per built rank, two households
-// each. Uplifted civilizations hold their place for good (warm towers), living
-// residents grow with their age, a negotiation draws a ring, and a nuclear
-// winter frosts everything except what has already crossed the filter.
-import { SOLAR_TALENTS, householdsPerDome } from './solar-colony.js';
-const TAU = Math.PI * 2;
-const disc = (c, x, y, r, fill) => { c.beginPath(); c.arc(x, y, r, 0, TAU); c.fillStyle = fill; c.fill(); };
-const noise = n => { n = Math.imul(n ^ (n >>> 16), 0x21f0aaad); n = Math.imul(n ^ (n >>> 15), 0x735a2d97); return ((n ^ (n >>> 15)) >>> 0) / 4294967296; };
-
-// Who lives where: uplifted households first (they never move), then residents, then arks on their way.
-export function domeHouseholds(o) {
-  const world = o.solar.colonies.mars;
-  return [...world.uplifted.map(civ => ({ civ, kind: 'uplifted' })), ...world.civs.map(civ => ({ civ, kind: 'resident' })),
-    ...o.solar.transfers.filter(t => t.to === 'mars').map(t => ({ civ: t.civ, kind: 'incoming' }))];
+// The cross-section is a close architectural view, not a second simulation.
+import { SOLAR_TALENTS, householdsPerDome, domeCapacity } from './solar-colony.js';
+import { upliftedInOrbit, growthHouseholds } from './colony-war.js';
+import { drawTransferDescent } from './solar-travel.js';
+import { TAU, noise, line, disc, structure } from './celestial-structures.js';
+export function domeHouseholds(o){
+  const world=o.solar.colonies.mars;
+  return[...(upliftedInOrbit(world)?[]:world.uplifted.map(civ=>({civ,kind:'uplifted'}))),...world.civs.map(civ=>({civ,kind:'resident'})),...o.solar.transfers.filter(t=>t.to==='mars').map(t=>({civ:t.civ,kind:'incoming',flight:t}))];
 }
-function tower(c, x, ground, height, width, lit, warm) {
-  c.fillStyle = warm ? '#6d5a3f' : '#3c4a48'; c.fillRect(x - width / 2, ground - height, width, height);
-  c.fillStyle = warm ? '#f0cf8c' : lit ? '#d9d2a6' : '#58625f';
-  for (let y = ground - height + 4; y < ground - 3; y += 6) c.fillRect(x - width / 2 + 2, y, Math.max(1, width - 4), 1.4);
+function dwelling(c,x,ground,width,height,age,lit,uplifted){
+  c.fillStyle=uplifted?'#6d7564':'#384c4b';
+  if(age===1){c.beginPath();c.moveTo(x-width*.45,ground);c.lineTo(x-width*.12,ground-height*.5);c.lineTo(x+width*.14,ground-height*.58);c.lineTo(x+width*.45,ground);c.fill();}
+  else for(let i=0;i<Math.min(5,age);i++){
+    const bw=width/(age+1)*.8,bx=x-width*.42+i*width/age,bh=height*(.45+(i%3)*.2)*(age/5);
+    c.fillRect(bx,ground-bh,bw,bh);
+    if(age===2){c.fillRect(bx-bw*.1,ground-bh-2,bw*1.2,2);}
+    if(age>=4)line(c,[[bx+bw*.5,ground-bh],[bx+bw*.5,ground-bh-4]],'#89978699',.5);
+    if(lit)for(let k=0;k<age-1;k++)line(c,[[bx+1,ground-bh+3+k*4],[bx+bw-1,ground-bh+3+k*4]],uplifted?'#e6d6a4bd':'#c7c6a488',.65);
+  }
+  if(age>=3)line(c,[[x-width*.43,ground],[x+width*.43,ground]],lit?'#c1b99566':'#747b6c44',.6);
 }
-export function drawDomes(c, w, h, o, { time = 0 } = {}) {
-  const world = o.solar.colonies.mars, ranks = o.solar.talents.dome, slots = SOLAR_TALENTS.dome.costs.length, winter = world.phase === 'winter';
-  c.clearRect(0, 0, w, h);
-  const sky = c.createLinearGradient(0, 0, 0, h); sky.addColorStop(0, winter ? '#161c1f' : '#1b1715'); sky.addColorStop(1, winter ? '#2a3033' : '#3a2620');
-  c.fillStyle = sky; c.fillRect(0, 0, w, h);
-  for (let i = 0; i < 40; i++) disc(c, noise(i + 3) * w, noise(i + 90) * h * .55, .5 + noise(i + 7) * .6, '#d6cdb455');
-  const ground = h * .8;
-  c.fillStyle = winter ? '#586062' : '#6b3f2d'; c.beginPath(); c.moveTo(0, ground);
-  for (let x = 0; x <= w; x += 16) c.lineTo(x, ground - 4 * Math.sin(x * .03) - 3 * noise(x));
-  c.lineTo(w, h); c.lineTo(0, h); c.closePath(); c.fill();
-  const homes = domeHouseholds(o), span = w / slots, radius = Math.min(span * .42, h * .55);
-  for (let d = 0; d < slots; d++) {
-    const x = span * (d + .5), built = d < ranks;
-    c.save(); c.beginPath(); c.arc(x, ground, radius, Math.PI, TAU);
-    if (!built) { c.setLineDash([3, 5]); c.strokeStyle = '#8a7c6a55'; c.lineWidth = 1; c.stroke(); c.restore();
-      c.fillStyle = '#8a7c6a88'; c.font = '9px system-ui,sans-serif'; c.textAlign = 'center'; c.fillText('未建', x, ground - radius * .45); continue; }
-    c.fillStyle = winter ? '#aeb8b91c' : '#c9d6c90f'; c.fill(); c.clip();
-    // Two households per dome, side by side.
-    const per = householdsPerDome(o);
-    for (let k = 0; k < per; k++) {
-      const home = homes[d * per + k], hx = x + ((k + .5) / per - .5) * radius * 1.3;
-      if (!home) continue;
-      const { civ, kind } = home, age = kind === 'uplifted' ? 5 : civ.age, lit = !winter || kind === 'uplifted';
-      if (kind === 'incoming') { c.strokeStyle = '#e6d6a466'; c.setLineDash([2, 3]); c.strokeRect(hx - 6, ground - 10, 12, 10); c.setLineDash([]); continue; }
-      for (let t = 0; t < age; t++) tower(c, hx + (t - (age - 1) / 2) * 5.5, ground, radius * (.18 + .1 * ((t * 7 + age) % 4)) * (kind === 'uplifted' ? 1.45 : 1), 4.5, lit, kind === 'uplifted');
-      if (kind === 'uplifted') { const glow = c.createRadialGradient(hx, ground - radius * .3, 0, hx, ground - radius * .3, radius * .55); glow.addColorStop(0, '#f3d99a33'); glow.addColorStop(1, '#f3d99a00'); c.fillStyle = glow; c.fillRect(hx - radius, ground - radius, radius * 2, radius); }
-      if (civ.accord !== null && civ.accord !== undefined) { const y = ground - radius * .62; c.lineWidth = 1.4; c.strokeStyle = '#e8d49a44'; c.beginPath(); c.arc(hx, y, 5, 0, TAU); c.stroke();
-        c.strokeStyle = '#e8d49a'; c.beginPath(); c.arc(hx, y, 5, -Math.PI / 2, -Math.PI / 2 + TAU * civ.accord); c.stroke(); }
-      if (civ.warId) disc(c, hx, ground - radius * .62, 2 + Math.sin(time * 5) * .6, '#ec805c');
+export function drawDomes(c,w,h,o,{time=0,reducedMotion=false}={}){
+  time=reducedMotion?0:time;const world=o.solar.colonies.mars,ranks=o.solar.talents.dome,per=householdsPerDome(o),grand=growthHouseholds(world)>0,orbit=upliftedInOrbit(world),winter=world.phase==='winter';
+  c.save();c.clearRect(0,0,w,h);const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,'#101b1e');sky.addColorStop(1,winter?'#333c3b':'#40392f');c.fillStyle=sky;c.fillRect(0,0,w,h);
+  for(let i=0;i<32;i++)disc(c,noise(i+3)*w,noise(i+90)*h*.5,.5,'#d6cdb455');
+  const ground=h*.79;c.fillStyle=winter?'#53605a':'#655c49';c.beginPath();c.moveTo(0,ground);
+  for(let x=0;x<=w+16;x+=16)c.lineTo(x,ground-2*Math.sin(x*.03)-2*noise(x));c.lineTo(w,h);c.lineTo(0,h);c.closePath();c.fill();
+  const homes=domeHouseholds(o),capacity=domeCapacity(o),vacant=orbit&&homes.length<capacity?1:0;
+  const rows=grand?1:SOLAR_TALENTS.dome.costs.length,span=w/rows,rx=span*.44,ry=Math.min(rx,h*.60),positions=new Map();
+  for(let d=0;d<rows;d++){
+    const x=span*(d+.5),built=grand||d<ranks,slots=grand?capacity:per;
+    c.save();c.beginPath();c.ellipse(x,ground,rx,ry,0,Math.PI,TAU);
+    if(!built){c.setLineDash([2,5]);c.strokeStyle='#9ba89326';c.lineWidth=.65;c.stroke();c.restore();continue;}
+    const glass=c.createLinearGradient(x-rx,ground-ry,x+rx,ground);glass.addColorStop(0,winter?'#b3bdae12':'#bad1bf1b');glass.addColorStop(1,'#aebba803');c.fillStyle=glass;c.fill();c.clip();
+    for(let k=0;k<slots;k++){
+      const i=(grand?0:d*per)+k-vacant,home=homes[i],hx=x+((k+.5)/Math.max(1,slots)-.5)*rx*1.72,bw=rx*1.5/Math.max(1,slots);
+      line(c,[[hx-bw*.42,ground+1],[hx+bw*.42,ground+1]],'#a6ad9344',.7);
+      if(!home)continue;positions.set(home.civ.id,{x:hx,y:ground-ry*.45});
+      if(home.kind==='incoming'){
+        c.setLineDash([2,3]);c.strokeStyle='#b6bf9f55';c.strokeRect(hx-bw*.25,ground-ry*.12,bw*.5,ry*.12);c.setLineDash([]);
+        const age=o.elapsed-home.flight.arriveAt+2;if(age>0)drawTransferDescent(c,hx,ground-3,ry*.95,age,{reducedMotion});continue;
+      }
+      const lit=!winter||home.kind==='uplifted';dwelling(c,hx,ground,bw,ry*.88,home.kind==='uplifted'?5:home.civ.age,lit,home.kind==='uplifted');
+      drawTransferDescent(c,hx,ground-ry*.2,ry*.85,o.elapsed-home.civ.arrivedAt,{reducedMotion});
+      if(home.civ.accord!=null){c.strokeStyle='#d2c49733';c.lineWidth=.65;c.beginPath();c.arc(hx,ground-ry*.63,4,0,TAU);c.stroke();c.strokeStyle='#d2c497aa';c.lineWidth=.7;c.beginPath();c.arc(hx,ground-ry*.63,4,-Math.PI/2,-Math.PI/2+TAU*home.civ.accord);c.stroke();}
     }
-    c.restore();
-    // Glass: rim, a highlight, and frost in a winter.
-    c.strokeStyle = winter ? '#c3cdcd99' : '#cdd9c877'; c.lineWidth = 1.2; c.beginPath(); c.arc(x, ground, radius, Math.PI, TAU); c.stroke();
-    c.strokeStyle = '#ffffff22'; c.lineWidth = 2; c.beginPath(); c.arc(x, ground, radius * .86, Math.PI * 1.15, Math.PI * 1.38); c.stroke();
-    if (winter) for (let i = 0; i < 14; i++) disc(c, x + (noise(d * 31 + i) - .5) * radius * 1.8, ground - noise(d * 17 + i) * radius * .9, .8, '#e4ecec88');
-    c.fillStyle = '#b9ab8e'; c.font = '8px ui-monospace,monospace'; c.textAlign = 'center'; c.fillText(`DOME ${String(d + 1).padStart(2, '0')}`, x, ground + 14);
+    c.restore();c.strokeStyle=winter?'#b9c1b266':'#bbcfb877';c.lineWidth=.85;c.beginPath();c.ellipse(x,ground,rx,ry,0,Math.PI,TAU);c.stroke();
+    for(const offset of [-.5,0,.5]){c.strokeStyle='#bbcfb81c';c.lineWidth=.55;c.beginPath();c.ellipse(x,ground,Math.max(.6,rx*Math.abs(offset)),ry,0,Math.PI,TAU);c.stroke();}
+    c.strokeStyle='#dbe2c833';c.beginPath();c.ellipse(x,ground,rx*.92,ry*.92,0,Math.PI*1.12,Math.PI*1.36);c.stroke();
+    c.fillStyle='#9dad9c';c.font='8px ui-monospace,monospace';c.textAlign='center';c.fillText(grand?'GREAT DOME':`DOME ${String(d+1).padStart(2,'0')} / ${per}`,x,ground+16);
   }
-  // Residents at war: a thin red arc between the two households.
-  const per = householdsPerDome(o);
-  for (const war of world.wars) {
-    const at = war.sides.map(id => homes.findIndex(hm => hm.civ.id === id)).map(i => ({ x: span * (Math.floor(i / per) + .5) + ((i % per + .5) / per - .5) * radius * 1.3, y: ground - radius * .62 }));
-    if (at.some(p => !Number.isFinite(p.x))) continue;
-    c.strokeStyle = war.seized ? '#e8d49a99' : '#ec805c88'; c.setLineDash([2, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(at[0].x, at[0].y);
-    c.quadraticCurveTo((at[0].x + at[1].x) / 2, Math.min(at[0].y, at[1].y) - radius * .5, at[1].x, at[1].y); c.stroke(); c.setLineDash([]);
+  for(const war of world.wars){const at=war.sides.map(id=>positions.get(id));if(at.some(p=>!p))continue;c.strokeStyle=war.seized?'#d5c79a88':'#c2967788';c.setLineDash([2,4]);c.lineDashOffset=-time*2;c.lineWidth=.7;c.beginPath();c.moveTo(at[0].x,at[0].y);c.quadraticCurveTo((at[0].x+at[1].x)/2,Math.min(at[0].y,at[1].y)-ry*.25,at[1].x,at[1].y);c.stroke();c.setLineDash([]);}
+  if(orbit){
+    const x=w*.07;line(c,[[x,ground],[x,19]],'#b8c6ac8c',.7);structure(c,x,22,.75,'station');const p=reducedMotion?.65:(time*.08)%1;structure(c,x,ground-(ground-24)*p,.42,'tug',{angle:-Math.PI/2});
+    c.fillStyle='#c8caac';c.font='8px system-ui';c.textAlign='left';c.fillText('升格文明 · 轨道家园',x+12,25);
   }
-  if (winter) { c.fillStyle = '#c9d2d2'; c.font = '10px ui-monospace,monospace'; c.textAlign = 'right'; c.fillText(`NUCLEAR WINTER ${Math.ceil(world.remaining)}s`, w - 14, 18); }
-  c.fillStyle = '#9d8f78'; c.font = '8px ui-monospace,monospace'; c.textAlign = 'left'; c.fillText('MARS / DOME CROSS-SECTION', 14, 18);
+  if(winter){c.fillStyle='#bdc5b6';c.font='9px ui-monospace,monospace';c.textAlign='right';c.fillText(`NUCLEAR WINTER ${Math.ceil(world.remaining)}s`,w-12,16);}
+  if(!orbit){c.fillStyle='#93a291';c.font='8px ui-monospace,monospace';c.textAlign='left';c.fillText('MARS / DOME CROSS-SECTION',12,16);}c.restore();
 }

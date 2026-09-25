@@ -13,6 +13,7 @@ export function surfacePoint(lon,lat,spin=0,tilt=0){
   return{x:x*ct+y*st,y:-x*st+y*ct,z:Math.cos(a)*c};
 }
 export const spinOf=(body,time)=>time/(surfaceOf(body).spin??180)*TAU;
+export const terrainOffset=body=>noise([...body.id].reduce((n,ch)=>n*31+ch.charCodeAt(0),0)>>>0)*TAU;
 // Clip small surface polygons against the horizon before projecting them.
 function polygon(c,points,r,color){
   const visible=[];
@@ -76,7 +77,7 @@ function tangent(c,p,r,draw){
 }
 function rocky(c,body,r,spin,tilt){
   const seed=[...body.id].reduce((n,ch)=>n*31+ch.charCodeAt(0),0)>>>0;
-  spin+=noise(seed)*TAU;
+  spin+=terrainOffset(body);
   const mars=body.id==='mars',ice=body.surface==='ice',volcanic=body.surface==='volcanic';
   if(mars){
     for(let i=0;i<10;i++)patch(c,r,spin,tilt,i*2.39,Math.sin(i*3.1+.4)*.7,.24+noise(i+6)*.2,.12+noise(i+71)*.15,'#665e4d44',i,.18);
@@ -128,17 +129,29 @@ function rings(c,r,settings,front){
     c.strokeStyle=`rgba(187,182,153,${alpha})`;c.lineWidth=step*r*1.15;c.beginPath();c.arc(0,0,r*radius,start,start+Math.PI);c.stroke();
   }c.restore();
 }
-export function drawPlanetSphere(ctx,body,x,y,r,{time=0,sunAngle=-.4,reducedMotion=false}={}){
+export function drawPlanetSphere(ctx,body,x,y,r,{time=0,sunAngle=-.4,reducedMotion=false,appearance={}}={}){
+  time=reducedMotion?0:time;
   if(body.id==='earth'){drawEarthSphere(ctx,x,y,r,{time,reducedMotion});return;}
   const profile=surfaceOf(body),spin=spinOf(body,reducedMotion?0:time),tilt=profile.tilt??.12;
   const palette=PALETTES[body.id]??(body.surface==='ice'?['#b8c3b5','#a0afa3','#697d76']:body.surface==='volcanic'?['#b8ae85','#9b9876','#697766']:['#a9b3a1','#7f8f83','#56675f']);
   ctx.save();ctx.translate(x,y);if(profile.rings)rings(ctx,r,profile.rings,false);
-  if(profile.atmosphere){const glow=ctx.createRadialGradient(0,0,r*.97,0,0,r*1.07);glow.addColorStop(0,`${profile.atmosphere}00`);glow.addColorStop(.5,`${profile.atmosphere}20`);glow.addColorStop(1,`${profile.atmosphere}00`);disc(ctx,0,0,r*1.07,glow);}
+  if(profile.atmosphere){const edge=1.07+(appearance.terraform??0)*.015,glow=ctx.createRadialGradient(0,0,r*.97,0,0,r*edge);glow.addColorStop(0,`${profile.atmosphere}00`);glow.addColorStop(.5,`${profile.atmosphere}20`);glow.addColorStop(1,`${profile.atmosphere}00`);ctx.save();ctx.globalAlpha*=1-(appearance.winter??0)*.8;disc(ctx,0,0,r*edge,glow);ctx.restore();}
   const g=ctx.createRadialGradient(-r*.25,-r*.3,r*.1,0,0,r);g.addColorStop(0,palette[0]);g.addColorStop(.7,palette[1]);g.addColorStop(1,palette[2]);disc(ctx,0,0,r,g);
   ctx.save();ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.clip();
   if(profile.surface==='gas')gas(ctx,body,r,spin,tilt);
   else if(profile.surface==='cloud')cloud(ctx,body,r,spin,tilt);
   else rocky(ctx,body,r,spin,tilt);
+  if(appearance.green)for(let i=0;i<16;i++)patch(ctx,r,spin,tilt,i*2.4,Math.sin(i*1.9)*.65,.23*appearance.green,.15*appearance.green,'#526e515f',i,.22);
+  if(appearance.wind)for(let i=0;i<7;i++)patch(ctx,r,spin+time*.07,tilt,i*1.7,.7-i*.2,.28,.009,'#c2ccc04d');
+  if(appearance.darkSpot)patch(ctx,r,spin+time*.008,tilt,.4,-.23,.21,.07,'#304f6344');
+  if(appearance.hexagon){const points=Array.from({length:6},(_,i)=>surfacePoint(i*TAU/6,1.22,spin,tilt));polygon(ctx,points,r,'#b9b79b44');}
+  if(appearance.tiltPower)band(ctx,r,spin,tilt,.9,Math.PI/2,'#d4e0d64a',.002);
+  if(appearance.titan){const haze=ctx.createRadialGradient(r*.2,-r*.2,0,0,0,r);haze.addColorStop(0,'#c8bd9318');haze.addColorStop(1,'#c8bd9340');disc(ctx,0,0,r,haze);}
+  if(appearance.winter){
+    const spread=appearance.winterSpread??1;ctx.save();ctx.globalAlpha*=appearance.winter;
+    const dust=ctx.createRadialGradient(r*.3,-r*.2,0,r*.3,-r*.2,r*(.1+spread*2));dust.addColorStop(0,'#8b8e80e8');dust.addColorStop(.6,'#727971bd');dust.addColorStop(1,'#72797100');disc(ctx,r*.3,-r*.2,r*(.1+spread*2),dust);
+    for(let i=0;i<14;i++)patch(ctx,r,spin*.2+time*.003,tilt,i*2.4,Math.sin(i)*1.1,.5,.11,'#b0afa116');ctx.restore();
+  }
   ctx.drawImage(nightMask(ctx,sunAngle),-r,-r,r*2,r*2);ctx.restore();
   ctx.strokeStyle='#acbca42b';ctx.lineWidth=.65;ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.stroke();
   if(profile.rings)rings(ctx,r,profile.rings,true);ctx.restore();

@@ -74,7 +74,8 @@ export function registerDestructionTests(test, assert, near) {
       near(Number(panel.dataset.time),3);el('close-save').click();
       Object.defineProperty(page,'hidden',{configurable:true,value:true});page.dispatchEvent(new win.Event('visibilitychange'));
       for(let i=0;i<20;i++)win.__testFrame(now+=100);near(Number(panel.dataset.time),3);
-      delete page.hidden;page.dispatchEvent(new win.Event('visibilitychange'));
+      // Restore the fixture's synthetic visibility, not Chrome's occluded iframe state.
+      Object.defineProperty(page,'hidden',{configurable:true,value:false});page.dispatchEvent(new win.Event('visibilitychange'));
       win.__testFrame(now+=100000);near(Number(panel.dataset.time),3,'Hidden time must not be poured into the presentation');
       for(let i=0;i<201;i++)win.__testFrame(now+=100);
       assert(panel.hidden && !el('home-scroll').inert && page.activeElement.id==='close-archives');

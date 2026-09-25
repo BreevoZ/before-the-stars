@@ -1,3 +1,4 @@
+import { tether, structure, line as structureLine } from './celestial-structures.js';
 import { ARK_SITES, arkSite, drawArkLight } from './ark-lights.js';
 import { drawOrbitalScene, ORBITAL_SECONDS } from './orbital-scene.js';
 import { SITES, ORBITAL_RULES as R } from './orbital-config.js';
@@ -223,19 +224,19 @@ function lunarSystem(ctx,o,moon,cx,cy,r,{ambient,reducedMotion}){
   const dx=dock[0]-sx,dy=dock[1]-sy,nx=-dy/len,ny=dx/len,bow=len*.16*(nx*(sx-cx)+ny*(sy-cy)>0?1:-1);
   const at=t=>{const u=1-t;return[u*u*sx+2*u*t*((sx+dock[0])/2+nx*bow)+t*t*dock[0],u*u*sy+2*u*t*((sy+dock[1])/2+ny*bow)+t*t*dock[1]];};
   if(!o.talents.outpost){ctx.setLineDash([2,6]);ctx.strokeStyle='#c9c19a55';ctx.lineWidth=.8;ctx.beginPath();for(let t=0;t<=1;t+=.05){const[p,q]=at(t);t?ctx.lineTo(p,q):ctx.moveTo(p,q);}ctx.stroke();ctx.setLineDash([]);return;}
-  const level=o.talents.lunarIndustry,driver=Boolean(o.talents.massDriver);
+  const level=o.talents.lunarIndustry,driver=Boolean(o.talents.massDriver),relay=o.solar?.talents.lunarRelay??0;
   // The corridor itself: faint before the driver, a steady filament after it.
-  ctx.strokeStyle=driver?'#e8d9a0':'#c9c19a';ctx.globalAlpha=driver?.22:.1;ctx.lineWidth=driver?1.1:.7;ctx.beginPath();for(let t=0;t<=1;t+=.04){const[p,q]=at(t);t?ctx.lineTo(p,q):ctx.moveTo(p,q);}ctx.stroke();ctx.globalAlpha=1;
+  ctx.strokeStyle=driver?'#e8d9a0':'#c9c19a';ctx.globalAlpha=(driver?.22:.1)+relay*.07;ctx.lineWidth=(driver?1.1:.7)+relay*.15;ctx.beginPath();for(let t=0;t<=1;t+=.04){const[p,q]=at(t);t?ctx.lineTo(p,q):ctx.moveTo(p,q);}ctx.stroke();ctx.globalAlpha=1;
   if(reducedMotion)return;
   if(!driver){
     // Shuttles: a handful of capsules with a short exhaust, easing in to dock.
-    const count=2+level,interval=6/(1+level);
+    const count=Math.min(18,2+level+relay*3),interval=6/(1+level+relay);
     for(let k=0;k<count;k++){const t=((ambient/interval)+k/count)%1,e=t*t*(3-2*t),[px,py]=at(e),[qx,qy]=at(Math.max(0,e-.035));
       ctx.globalAlpha=Math.sin(t*Math.PI)*.8;ctx.strokeStyle='#e9c98a';ctx.lineWidth=1;path(ctx,[[qx,qy],[px,py]]);ctx.stroke();disc(ctx,px,py,1.3,'#f3e7b8');}
   }else{
     // Mass driver: a continuous stream of fast pellets with long trails, a
     // muzzle flash on the moon and a catch flash at the ring each time one lands.
-    const count=8+level*3,interval=2.4/(1+level*.5);
+    const count=Math.min(40,8+level*3+relay*6),interval=2.4/(1+level*.5+relay*.4);
     for(let k=0;k<count;k++){const t=((ambient/interval)+k/count)%1,e=t**.8,[px,py]=at(e),[qx,qy]=at(Math.max(0,e-.12));
       const trail=ctx.createLinearGradient(qx,qy,px,py);trail.addColorStop(0,'#f1dfa000');trail.addColorStop(1,'#f5e6b6d0');
       ctx.strokeStyle=trail;ctx.lineWidth=1.2;path(ctx,[[qx,qy],[px,py]]);ctx.stroke();disc(ctx,px,py,1.1,'#fff4cf');
@@ -250,6 +251,7 @@ export function drawOrbitalColony(ctx,width,height,o,{reducedMotion=false,ambien
   const moon=o.talents.transit?moonPosition(time):null,system={ambient:ambientTime,reducedMotion};
   if(moon){moonOrbitPath(ctx,500,322,238,false);if(moon.depth<0)lunarSystem(ctx,o,moon,500,322,238,system);}
   habitat(ctx,500,322,238,o.talents.recovery,false,{time,construction,reducedMotion});globe(ctx,500,322,238,o,{time,reducedMotion});habitat(ctx,500,322,238,o.talents.recovery,true,{time,construction,reducedMotion});
+  if(o.solar?.talents.spaceElevator)tether(ctx,500,322,238,sphere(.4,0,dayPhase(time)*TAU),{time,reducedMotion});
   if(moon){moonOrbitPath(ctx,500,322,238,true);if(moon.depth>=0)lunarSystem(ctx,o,moon,500,322,238,system);}
   for(const w of o.wars){const points=w.participants.map(id=>sitePosition(SITES.find(s=>s.id===o.civilizations.find(c=>c.id===id).site),time));if(!points.every(p=>p.visible))continue;
     const[a,b]=points;ctx.strokeStyle=C.war;ctx.lineWidth=1;ctx.setLineDash([3,6]);ctx.lineDashOffset=reducedMotion?0:-ambientTime*3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo((a.x+b.x)/2,(a.y+b.y)/2-45,b.x,b.y);ctx.stroke();ctx.setLineDash([]);
@@ -343,6 +345,11 @@ export function drawLunarColony(ctx,width,height,o,{ambientTime=o.elapsed,reduce
       const trail=ctx.createLinearGradient(qx,qy,x,y);trail.addColorStop(0,'#f1dfa000');trail.addColorStop(1,'#f7e9bb');
       ctx.globalAlpha=fade;ctx.strokeStyle=trail;ctx.lineWidth=1.6;path(ctx,[[qx,qy],[x,y]]);ctx.stroke();disc(ctx,x,y,1.8,'#fff6d6');}
     ctx.globalAlpha=1;
+  }
+  if(o.solar?.talents.launchRail){
+    const x=cx-r*.12,y=cy+r*.46,len=r*.34;structureLine(ctx,[[x,y],[x-len,y-len*.18]],'#bdcbb493',.8);structureLine(ctx,[[x,y+2],[x-len,y-len*.18+2]],'#bdcbb455',.6);
+    for(let i=0;i<8;i++){const k=i/7;structureLine(ctx,[[x-k*len,y-k*len*.18-2],[x-k*len,y-k*len*.18+4]],'#b5bda270',.6);}
+    const p=reducedMotion?.5:(ambientTime*.5)%1;structure(ctx,x-p*len,y-p*len*.18,.45,'tug',{angle:Math.PI+.18});
   }
   ctx.fillStyle='#9baf9e';ctx.font='9px ui-monospace, monospace';ctx.textAlign='center';ctx.fillText(`LUNA  /  ${String(sites.length).padStart(2,'0')} FACILITIES  /  ${o.talents.shipyard} ARKS${o.talents.voyage?' DEPARTED':''}`,cx,cy+r+25);ctx.restore();
 }

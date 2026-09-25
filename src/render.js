@@ -41,6 +41,17 @@ for (const frame of LANDSCAPE_KEYFRAMES) {
   frame.colors = frame.colors.map(hex => [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16)));
 }
 
+// Optional environment colours; the default painter remains pixel-identical.
+export const MARS_PALETTE = Object.freeze({
+  daySeconds:123.12,sky:['#777f87','#b9a593','#ddc6a3'],mountains:['#8e8272','#776a59','#5c5648'],ground:['#b7a081','#625847','#413e35','#8b7b5f','#a99674'],
+  rubble:['#79695036','#a3957725'],moons:[{period:5.60,phase:1.4,r:5},{period:22.18,phase:4.4,r:3}],
+});
+function environmentLight(light,palette,phase){
+  if(!palette)return light;
+  const daylight=Math.max(0,Math.sin(phase*Math.PI*2)),shade=.34+.66*Math.min(1,.3+daylight);
+  const colors=[...palette.sky,...palette.mountains,...palette.ground],result={...light};
+  LANDSCAPE_COLORS.forEach((key,i)=>{const rgb=[1,3,5].map(k=>parseInt(colors[i].slice(k,k+2),16));result[key]=`rgb(${rgb.map(v=>Math.round(v*shade)).join(',')})`;});return result;
+}
 function landscapeLight(phase) {
   const nextIndex = LANDSCAPE_KEYFRAMES.findIndex(frame => frame.phase > phase);
   const from = LANDSCAPE_KEYFRAMES[nextIndex - 1];
@@ -109,9 +120,9 @@ function drawCelestialBody(ctx, ground, angle, moon, { sunAngle = angle + Math.P
   ctx.restore(); ctx.restore();
 }
 
-export function drawLandscape(ctx, height, ground, time, lunarTime = time) {
-  const phase = dayPhase(time);
-  const light = landscapeLight(phase);
+export function drawLandscape(ctx, height, ground, time, lunarTime = time, palette = null) {
+  const phase = palette?.daySeconds ? ((time / palette.daySeconds) % 1 + 1) % 1 : dayPhase(time);
+  const light = environmentLight(landscapeLight(phase), palette, phase);
   const sky = ctx.createLinearGradient(0, 0, 0, ground);
   sky.addColorStop(0, light.skyTop);
   sky.addColorStop(0.6, light.skyMiddle);
@@ -143,7 +154,10 @@ export function drawLandscape(ctx, height, ground, time, lunarTime = time) {
   ctx.restore();
   const sunAngle = phase * Math.PI * 2, orbit = lunarOrbitAngle(lunarTime);
   // The moon goes behind the sun: near conjunction it must never cover it.
-  drawCelestialBody(ctx, ground, lunarSkyAngle(sunAngle, lunarTime), true, { sunAngle, elongation: orbit });
+  if(palette?.moons){
+    for(const m of palette.moons){const a=m.phase+time/m.period*Math.PI*2,p=celestialPoint(ground,a);if(Math.sin(a)<0)continue;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(a);polygon(ctx,[[-m.r,-m.r*.4],[-m.r*.3,-m.r*.7],[m.r*.8,-m.r*.4],[m.r,m.r*.4],[0,m.r*.7],[-m.r*.8,m.r*.3]],'#b2b3a077');line(ctx,[[-m.r*.2,-m.r*.5],[m.r*.5,-m.r*.3]],'#d0c8ad88',.7);ctx.restore();}
+  }else drawCelestialBody(ctx, ground, lunarSkyAngle(sunAngle, lunarTime), true, { sunAngle, elongation: orbit });
   drawCelestialBody(ctx, ground, sunAngle, false);
 
   polygon(ctx, [[0, ground], [0, ground - 115], [95, ground - 149], [171, ground - 114],
@@ -168,11 +182,12 @@ export function drawLandscape(ctx, height, ground, time, lunarTime = time) {
   for (let i = 0; i < 66; i++) {
     const x = (i * 137 + 28) % 1280;
     const y = ground + 32 + (i * 29) % Math.max(1, height - ground - 55);
-    ctx.fillStyle = i % 2 ? '#4c564036' : '#73806325';
+    ctx.fillStyle = palette?.rubble ? palette.rubble[i % 2] : i % 2 ? '#4c564036' : '#73806325';
     ctx.fillRect(x, y, 3 + i % 5, 2);
   }
   for (const x of [226, 317, 481, 802, 952, 1040]) {
-    line(ctx, [[x - 3, ground], [x - 5, ground - 9], [x, ground - 3], [x + 4, ground - 14]], light.grass, 2);
+    if(palette)polygon(ctx,[[x-5,ground],[x-3,ground-3],[x+3,ground-2],[x+5,ground]],light.grass);
+    else line(ctx, [[x - 3, ground], [x - 5, ground - 9], [x, ground - 3], [x + 4, ground - 14]], light.grass, 2);
   }
 }
 
@@ -222,18 +237,19 @@ export function createRenderer(canvas) {
   new ResizeObserver(resize).observe(canvas);
   resize();
 
-  return function render(game, { targeting = false, targetX = RULES.width / 2, skyTime = game.elapsed, lunarTime = skyTime } = {}) {
+  return function render(game, { targeting = false, targetX = RULES.width / 2, skyTime = game.elapsed, lunarTime = skyTime, palette = null } = {}) {
     if (!canvas.width || !canvas.height || !Number.isFinite(sceneHeight)) return;
     drawBattleScene(ctx, game, { height: sceneHeight, entityScale, time: reducedMotion.matches ? 0 : game.elapsed, skyTime: reducedMotion.matches ? 0 : skyTime, lunarTime: reducedMotion.matches ? 0 : lunarTime,
-      reducedMotion: reducedMotion.matches, targeting, targetX });
+      reducedMotion: reducedMotion.matches, targeting, targetX, palette });
   };
 }
 
 // One painter for live combat and its final frame in the destruction sequence.
 // Presentation callers supply their camera/clock; this never advances combat.
 export function drawBattleScene(ctx, game, { height = RULES.height, ground = height * .738,
-  time = game.elapsed, skyTime = time, lunarTime = skyTime, entityScale = 1, reducedMotion = false, targeting = false, targetX = RULES.width / 2 } = {}) {
-  drawLandscape(ctx, height, ground, skyTime, lunarTime);
+  time = game.elapsed, skyTime = time, lunarTime = skyTime, entityScale = 1, reducedMotion = false, targeting = false, targetX = RULES.width / 2, palette = null } = {}) {
+  if(palette && reducedMotion)time=skyTime=lunarTime=0;
+  drawLandscape(ctx, height, ground, skyTime, lunarTime, palette);
   ctx.save();
   ctx.translate(0, ground);
   drawBase(ctx, game.bases.player, game.ages.player, time, entityScale, game.turrets.player.length);

@@ -171,3 +171,24 @@
 - 每个新效果有「状态不同 → 画面不同」和「减少动态效果 → 静止」两条测试。
 - 320 / 390 / 1100 px 三个宽度下，总览和世界页不出现横向滚动，文字不重叠。
 - 光点只代表方舟：搜索 `drawArkLight` 的调用，确认每一处画的都是方舟。
+
+
+## 实现记录 · 2026-09-25
+
+本轮已接入上述画面，保持原生 Canvas / SVG / CSS，不引入图片贴图，不修改玩法、价格或 v34 存档。
+
+| 清单 | 实现入口 |
+| --- | --- |
+| 派出、尾迹、分段航线、到港、文明下降 | `solar-travel.js`、`solar-render.js`、`solar-ui.js` 的短期到港记录 |
+| 火星穹顶、开发、核冬天、绿化、大气 | `solar-world-effects.js`、`planet-render.js`、`dome-render.js` |
+| 各天体设施与卫星驻地 | `solar-world-effects.js`、`solar-world-render.js`、`celestial-structures.js` |
+| 火星战场 | `render.js` 的可选 `MARS_PALETTE`，由 `solar-ui.js` 调用 |
+| 地月设施 | `orbital-render.js`、`shipyard-render.js` |
+| 恒星太阳、中继、偏心轨道 | `stellar-render.js`、`solar-render.js` |
+| 中轴购买流光、一次性绘制背景纹理 | `solar-tree-ui.js`、`solar.css` |
+
+校阅入口：`/tests/vii-visuals.html`（只读画面样本，与玩家存档隔离）。自动化验收集中在 `tests/solar-visual-cases.js`，仍由 `/tests/` 和 `npm test` 统一运行。已有手机 UI 回归覆盖 320 / 390 / 1100px。
+
+细节约定：到港后的 2 秒细环只由 UI 上一帧等级变化触发，刷新不会虚构一次抵达；减少动态时省略瞬时闪光、固定球面与船只的位置，但真实抵达倒计时仍更新。手机世界页仅给选中的卫星显示画布标签，其余名称通过原有卫星菜单查看。太阳光球没有行星式明暗分界，日冕和日珥保持低饱和与固定数量。
+
+本轮验证结果：Node 与模拟器 **316/316**；完整浏览器回归 **450/450**（本次没有出现那两条环境失败）；VII 专项 **72/72**。用修改前 `HEAD` 的渲染器对比五个时代、四个昼夜时刻及两种动态设置，**40/40 张地球战场画面逐字节一致**。已检查 320 / 390px 实际游戏内嵌页面，自动布局测试覆盖 1100px。尚未在实体手机上测帧率与功耗。

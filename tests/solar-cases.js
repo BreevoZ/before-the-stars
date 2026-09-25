@@ -22,7 +22,7 @@ import { SOLAR_TALENTS, SOLAR_ROW, SOLAR_MAP, V31_SOLAR_KEYS, solarTalentState, 
 import { buildSolarTreeViewModel } from '../src/solar-tree-view-model.js';
 import { buildSolarViewModel } from '../src/solar-view-model.js';
 import { bodyPosition, BODIES } from '../src/solar-config.js';
-import { solarViewport, bodyAt, DESTINATIONS, drawSolarSystem, drawBodyPortrait } from '../src/solar-render.js';
+import { solarViewport, atlasPosition, bodyAt, DESTINATIONS, drawSolarSystem, drawBodyPortrait } from '../src/solar-render.js';
 import { drawShipyard, ARK_COUNT } from '../src/shipyard-render.js';
 import { voyageFrame, voyageGeometry, voyageIllumination, arkPose, drawVoyageScene, voyageMars, VOYAGE_SECONDS } from '../src/voyage-scene.js';
 import { ANIMATION_CLIPS } from '../src/animation-clips.js';
@@ -281,7 +281,7 @@ export function registerSolarTests(test, assert, near) {
     for(const [w,h] of [[1400,700],[390,350],[320,350]]) {
       const v=solarViewport(w,h);near(v.x*2+1000*v.scale,w);near(v.y*2+500*v.scale,h);
       for(const b of BODIES.filter(b=>!b.belt)) {
-        const p=bodyPosition(b,0);assert(p.x>0 && p.x<1000 && p.y>0 && p.y<500);
+        const p=atlasPosition(b,0);assert(p.x>0 && p.x<1000 && p.y>0 && p.y<500);
         assert(bodyAt({elapsed:0},p.x,p.y).id===b.id);
       }
     }

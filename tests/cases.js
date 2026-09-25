@@ -1,3 +1,4 @@
+import { registerSolarVisualTests } from './solar-visual-cases.js';
 import { registerSolarTests } from './solar-cases.js';
 import { registerColonyWarTests } from './colony-war-cases.js';
 import { registerOrbitalDoctrineTests } from './orbital-doctrine-cases.js';
@@ -29,7 +30,7 @@ export function collectCases({ browser = false } = {}) {
   const cases = [];
   const test = (name, run) => cases.push({ name, run });
   test.browser = browser ? test : () => {};
-  for (const register of [registerSolarTests, registerColonyWarTests, registerOrbitalDoctrineTests, registerOrbitalColonyTests, registerAutomationExpansionTests, registerDestructionTests, registerEconomyPacingTests, registerOrbitalTests, registerEconomyTests, registerGameTests, registerAnimationTests, registerProgressionTests,
+  for (const register of [registerSolarVisualTests, registerSolarTests, registerColonyWarTests, registerOrbitalDoctrineTests, registerOrbitalColonyTests, registerAutomationExpansionTests, registerDestructionTests, registerEconomyPacingTests, registerOrbitalTests, registerEconomyTests, registerGameTests, registerAnimationTests, registerProgressionTests,
     registerTalentTests, registerChallengeTests, registerStatTests, registerQuantityTests, registerArchitectureTests, registerTraitTests]) register(test, assert, near);
   if (browser) registerTalentHomeTests(test, assert, near);
   return cases;

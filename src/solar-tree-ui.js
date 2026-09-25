@@ -7,6 +7,7 @@ import { bodyById } from './solar-config.js';
 import { FACILITIES, flightTo } from './solar-industry.js';
 import { buildSolarTreeViewModel } from './solar-tree-view-model.js';
 import { drawOrbitalTalentSky } from './orbital-render.js';
+import { noise } from './celestial-structures.js';
 import { watchSeam } from './tree-flip.js';
 
 const NS = 'http://www.w3.org/2000/svg';
@@ -22,6 +23,7 @@ export function createSolarTree(getSession, { commit, viewChanged, flipOrbit }) 
   const map = dialog.querySelector('.orbit-tree-map'), root = T.voyage;
   map.style.width = `${SOLAR_MAP.width}px`; map.style.height = `${SOLAR_MAP.height}px`; const edges = el('solar-tree-edges'); edges.setAttribute('viewBox', `0 0 ${SOLAR_MAP.width} ${SOLAR_MAP.height}`); edges.style.width = map.style.width; edges.style.height = map.style.height;
   Object.assign(el('solar-flip-orbit').style, { left: `${root.x}px`, top: `${root.y + 92}px` }); Object.assign(el('solar-legend').style, { left: `${root.x}px`, top: `${root.y + 140}px` });
+  const axisFlow=document.createElementNS(NS,'path');axisFlow.id='solar-axis-flow';axisFlow.setAttribute('class','orbit-flow solar-axis-flow');axisFlow.setAttribute('pathLength','1');edges.append(axisFlow);
   // Regions without frames: a hairline between tiers, and for each world its
   // planet rising from the outer edge with the name beside it, very faint.
   const backdrop = document.createElement('div'); backdrop.className = 'solar-backdrop'; map.prepend(backdrop);
@@ -31,6 +33,15 @@ export function createSolarTree(getSession, { commit, viewChanged, flipOrbit }) 
     const planet = document.createElement('i'); planet.className = 'solar-region-planet'; planet.dataset.side = side;
     planet.style.top = `${(tier.top + tier.base) / 2}px`; planet.style.setProperty('--planet', region.reserved ? '#6f7f86' : body?.color ?? '#8a948f');
     if (region.reserved) planet.dataset.reserved = 'true';
+    else {
+      // One small repeating surface, composited by CSS. The stationary parent
+      // keeps its light direction; scrolling never asks Canvas to repaint.
+      const tile=document.createElement('canvas');tile.className='solar-region-texture';tile.width=512;tile.height=256;tile.setAttribute('aria-hidden','true');const c=tile.getContext('2d');
+      c.fillStyle=body?.color??'#829077';
+      if(['jupiter','saturn','neptune','uranus'].includes(region.id))for(let i=0;i<6;i++){c.globalAlpha=region.id==='uranus'?.12:.3;c.fillRect(0,18+i*39,256,6+(i%3)*5);}
+      else for(let i=0;i<14;i++){c.globalAlpha=.18+noise(i+8)*.22;const x=noise(i+22)*256,y=noise(i+48)*256;c.beginPath();for(let k=0;k<7;k++){const a=k*Math.PI*2/7,r=9+noise(i*7+k)*16;k?c.lineTo(x+Math.cos(a)*r,y+Math.sin(a)*r):c.moveTo(x+Math.cos(a)*r,y+Math.sin(a)*r);}c.closePath();c.fill();}
+      c.globalAlpha=1;c.drawImage(tile,0,0,256,256,256,0,256,256);planet.append(tile);
+    }
     const label = document.createElement('span'); label.className = 'solar-region-name'; label.dataset.side = side; label.style.top = `${tier.top - 118}px`;
     label.innerHTML = `${region.name}<small>${region.en}</small>`;
     backdrop.append(planet, label);
@@ -75,6 +86,10 @@ export function createSolarTree(getSession, { commit, viewChanged, flipOrbit }) 
     if (!purchaseSolarTalent(getSession(), key)) return; talent = key; commit(); select(key, true);
     const flying = T[key].facility && flightTo(getSession().orbital, FACILITIES[T[key].facility].body);
     el('solar-feedback').textContent = `${T[key].name} · ${flying ? '方舟已出发' : '已点亮'}`;
+    if (!reduced.matches && T[key].gold) {
+      axisFlow.setAttribute('d',`M${T.voyage.x} ${T.voyage.y} L${T[key].x} ${T[key].y}`);
+      axisFlow.getAnimations().forEach(a=>a.cancel());axisFlow.animate([{strokeDashoffset:1,opacity:0},{opacity:.9,offset:.12},{strokeDashoffset:0,opacity:0}],{duration:1800,easing:'ease-in-out'});
+    }
     if (!reduced.matches) { el(`solar-node-${key}`).animate([{ scale: 1 }, { scale: 1.15 }, { scale: 1 }], { duration: 450 });
       for (const p of Object.keys(T[key].requires)) el(`solar-flow-${p}-${key}`).animate([{ strokeDashoffset: 1, opacity: 0 }, { opacity: 1, offset: .12 }, { strokeDashoffset: 0, opacity: 0 }], { duration: 900, easing: 'ease-in-out' }); }
   }

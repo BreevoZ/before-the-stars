@@ -8,10 +8,12 @@ import { FACILITIES, buildFacility } from './solar-industry.js';
 import { transferCivilization } from './solar-colony.js';
 import { watchColonyWar, liveColonyWar, startAccord, seizeArsenals, GROWTH, fundGrowth } from './colony-war.js';
 import { drawDomes } from './dome-render.js';
-import { createRenderer } from './render.js';
+import { createRenderer, MARS_PALETTE } from './render.js';
+import { createSolarVisualHistory } from './solar-travel.js';
 import { AGES } from './game-config.js';
 export function createSolarUI(getSession,{openTree,replay,commit,openSolarTree}){
   const el=id=>document.getElementById(id),bind=createBindings(document),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+  const history=createSolarVisualHistory();let visualEvents=[];
   let view=null,selected='mars',hover=null,moonHover=null,civSignature='',watching=null,renderBattle=null;
   const allowed=next=>{const o=getSession().orbital;
     if(next==='earth'||next==='moon'&&o?.talents.outpost)return next;
@@ -21,7 +23,7 @@ export function createSolarUI(getSession,{openTree,replay,commit,openSolarTree})
   function syncCivOptions(o){const select=el('solar-transfer-civ'),list=o.civilizations.filter(c=>c.alive),signature=list.map(c=>`${c.id}:${c.age}:${c.warId?1:0}`).join('|');
     if(signature===civSignature)return;civSignature=signature;const keep=select.value;select.replaceChildren(...list.map(c=>{const option=document.createElement('option');option.value=c.id;option.textContent=`${c.name} · ${AGES[c.age].numeral}${c.warId?' · 交战中':''}`;return option;}));
     select.value=list.some(c=>c.id===keep)?keep:(list.find(c=>!c.warId)?.id??list[0]?.id??'');}
-  function sync(){const s=getSession();if(!s.orbital?.started)return;view=allowed(view);el('colony-map').dataset.view=view;for(const id of ['earth','moon'])el(`colony-view-${id}`).setAttribute('aria-pressed',String(view===id));
+  function sync(){const s=getSession();if(!s.orbital?.started)return;visualEvents=history.observe(s.orbital);view=allowed(view);el('colony-map').dataset.view=view;for(const id of ['earth','moon'])el(`colony-view-${id}`).setAttribute('aria-pressed',String(view===id));
     syncCivOptions(s.orbital);
     // Only the war open in the Mars dossier runs as a real battle; leaving it folds it back.
     if(view!=='mars')watching=null;if(!watchColonyWar(s.orbital,'mars',watching))watching=null;
@@ -93,16 +95,16 @@ export function createSolarUI(getSession,{openTree,replay,commit,openSolarTree})
     if(e.code==='Enter'){e.preventDefault();setView(moonHover??moons[0].id);}
   });
   function context(canvas){const{width,height}=canvas.getBoundingClientRect(),dpr=Math.min(devicePixelRatio||1,2);if(!width||!height)return null;const w=Math.round(width*dpr),h=Math.round(height*dpr);if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return{ctx,width,height};}
-  return{sync,setView,get view(){return allowed(view);},reset(){view=null;selected='mars';moonHover=null;watching=null;},paint(ambient){
+  return{sync,setView,get view(){return allowed(view);},reset(){view=null;selected='mars';moonHover=null;watching=null;history.reset();visualEvents=[];},paint(ambient){
     const o=getSession().orbital;if(!o?.started)return;
     if(view==='system'){
-      const p=context(canvas);if(p)drawSolarSystem(p.ctx,p.width,p.height,o,{ambientTime:ambient,reducedMotion:reduced.matches,hover,selected});
+      const p=context(canvas);if(p)drawSolarSystem(p.ctx,p.width,p.height,o,{ambientTime:ambient,reducedMotion:reduced.matches,hover,selected,events:visualEvents});
     }else if(!['earth','moon'].includes(view)){
-      const q=context(worldCanvas),body=destination(view);if(q&&body)drawWorldScene(q.ctx,q.width,q.height,body,o,{ambientTime:ambient,reducedMotion:reduced.matches,hover:moonHover});
+      const q=context(worldCanvas),body=destination(view);if(q&&body)drawWorldScene(q.ctx,q.width,q.height,body,o,{ambientTime:ambient,reducedMotion:reduced.matches,hover:moonHover,events:visualEvents});
     }
-    if(view==='mars'){const q=context(el('solar-dome'));if(q)drawDomes(q.ctx,q.width,q.height,o,{time:reduced.matches?0:ambient});}
+    if(view==='mars'){const q=context(el('solar-dome'));if(q)drawDomes(q.ctx,q.width,q.height,o,{time:reduced.matches?0:ambient,reducedMotion:reduced.matches});}
     // The renderer sizes its own canvas; it is created the first time a war is watched.
-    const live=watching&&liveColonyWar(o);if(live&&el('solar-battle').getBoundingClientRect().width){renderBattle??=createRenderer(el('solar-battle'));renderBattle(live.game,{skyTime:o.elapsed,lunarTime:o.elapsed});}
+    const live=watching&&liveColonyWar(o);if(live&&el('solar-battle').getBoundingClientRect().width){renderBattle??=createRenderer(el('solar-battle'));renderBattle(live.game,{skyTime:o.elapsed,lunarTime:o.elapsed,palette:MARS_PALETTE});}
     if(view==='moon'){const p=context(el('shipyard-canvas'));if(p)drawShipyard(p.ctx,p.width,p.height,o,{time:ambient,reducedMotion:reduced.matches});}
   }};
 }

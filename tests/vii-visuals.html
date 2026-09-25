@@ -1,0 +1,9 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>VII · 美术校阅</title>
+<style>
+:root{color-scheme:dark;font:13px system-ui;color:#bdcab7;background:#0b151c}body{margin:0}header{padding:18px 20px;border-bottom:1px solid #97ad9226}h1{font-size:17px;font-weight:400;letter-spacing:3px}p{color:#83978d;line-height:1.7}nav{display:flex;flex-wrap:wrap;gap:12px;align-items:center}select,button{font:inherit;background:#1b2b30;border:1px solid #9da88a44;border-radius:4px;color:inherit;padding:6px}main{margin:20px auto;max-width:1100px;width:100%}canvas{width:100%;display:block}section{margin-bottom:24px;border-bottom:1px solid #97ad9226}h2{font-weight:400;letter-spacing:2px;font-size:13px;padding:0 14px;color:#d3c7a4}label{white-space:nowrap}input{vertical-align:middle}a{color:#d3c7a4}
+</style><header><h1>VII / 美术校阅</h1><p>独立画面样本，不读取或改写存档。可切换建设状态、时间和屏幕宽度。所有图形直接调用游戏渲染器。</p><nav>
+<label>建设 <select id="state"><option value="built">完整开发</option><option value="bare">初建驻地</option><option value="winter">火星核冬天</option><option value="travel">方舟 / 转运</option><option value="growth">星环施工</option></select></label>
+<label>宽度 <select id="width"><option>1100</option><option>390</option><option>320</option></select></label>
+<label><input id="quiet" type="checkbox">减少动态</label><label><input id="play" type="checkbox" checked>播放</label>
+<label>时间 <input id="time" type="range" min="0" max="120" step="0.1" value="0"><output id="clock">0.0s</output></label><a href="./?filter=VII%20visual">视觉测试</a></nav></header><main id="gallery"></main>
+<script type="module" src="./solar-visual-preview.js"></script></html>
