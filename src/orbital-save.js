@@ -31,7 +31,7 @@ export function validateOrbital(s,version){
     // v25 footholds only needed the belt before Jupiter; v26 roots the branch on Venus.
     const requiresOf=(key,f)=>version>=26?f.requires??{}:key==='jupiter'?{belt:1}:{};
     for(const key of facilityKeys){const f=FACILITIES[key],rank=sol.facilities[key],paid=sol.payments[key]??[];
-      check(int(rank,0,f.costs.length)&&Array.isArray(paid)&&paid.length===rank+(Array.isArray(flights)&&flights.some(x=>x?.body===f.body)?1:0)&&paid.every((cost,i)=>Q.eq(cost,f.costs[i])),'行星工业实付');
+      check(int(rank,0,f.costs.length)&&Array.isArray(paid)&&paid.length===rank+(Array.isArray(flights)&&flights.some(x=>x?.body===f.body)?1:0)&&paid.every(cost=>whole(cost)&&Q.gt(cost,0)),'行星工业实付');
       if(rank)check(o.talents.voyage>0&&arrived(o,f.body)&&Object.entries(requiresOf(key,f)).every(([other,level])=>sol.facilities[other]>=level),'行星工业前置');}
     check(whole(sol.produced)&&Q.lte(sol.produced,o.legacyEarned)&&num(sol.fraction,0,1)&&sol.fraction<1,'行星工业产出');
     if(version>=26)validateColonies(o,version);
@@ -110,6 +110,9 @@ export function validateOrbital(s,version){
 
 // VII colonies (v26): talents on their own ledger, the dome's residents and the
 // arks in flight. Transfers are paid; a civilization can only be in one place.
+// VII prices are recalibrated from time to time: a payment keeps what was
+// actually paid, so the ledger checks the count and that each amount is real,
+// not that it matches today's price.
 // Before v30 the map had other shapes: an old save is checked for its own keys
 // and prices; its prerequisites belong to that old map and are not re-derived.
 const solarKeysOf=version=>version>=33?SOLAR_TALENT_KEYS:version>=32?V32_SOLAR_KEYS:version>=31?V31_SOLAR_KEYS:version>=30?V30_SOLAR_KEYS:version>=29?V29_SOLAR_KEYS:version>=27?V28_SOLAR_KEYS:V26_SOLAR_KEYS;
@@ -118,7 +121,7 @@ function validateColonies(o,version){
   const sol=o.solar,talentKeys=solarKeysOf(version);keys(sol.talents,talentKeys,'行星际天赋');
   for(const key of talentKeys){const t=SOLAR_TALENTS[key],costs=t?.costs??OLD_COSTS[key],rank=sol.talents[key],paid=sol.payments[key]??[];
     // 火星港 was granted free (a recorded 0) to v29 saves that already had a dome.
-    check(int(rank,0,costs.length)&&Array.isArray(paid)&&paid.length===rank&&paid.every((cost,i)=>Q.eq(cost,costs[i])||key==='harbor'&&Q.eq(cost,0)),'行星际天赋实付');
+    check(int(rank,0,costs.length)&&Array.isArray(paid)&&paid.length===rank&&paid.every(cost=>whole(cost)&&(Q.gt(cost,0)||key==='harbor'&&Q.eq(cost,0))),'行星际天赋实付');
     if(rank&&version>=34)check(o.talents.voyage>0&&Object.entries(t.requires).every(([p,n])=>solarRank(o,p)>=n)&&(!t.arrival||arrived(o,t.arrival)),'行星际天赋前置');}
   keys(sol.colonies,['mars'],'殖民地');const world=sol.colonies.mars,residents=version>=28?world?.civs:world,uplifted=version>=29?world?.uplifted:[];
   check(Array.isArray(residents)&&Array.isArray(sol.transfers)&&int(sol.nextTransfer),'殖民地列表');

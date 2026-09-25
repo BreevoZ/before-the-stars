@@ -35,7 +35,7 @@ export const COLONY_WAR = Object.freeze({
   // Settlements, in seconds of the fallen civilizations' own output.
   defeatSeconds: 30, nuclearSeconds: 90,
 });
-export const COLONIST_BASE = 16384;
+export const COLONIST_BASE = 131072;
 const M = 2 ** 20;
 export const UPLIFT = Object.freeze({ accordCost: 64 * M, accordSeconds: 60, seizeCost: 128 * M, seizeThreshold: .35, rate: 4, warlike: 1 });
 export const emptyWorld = () => ({ phase: 'living', remaining: 0, civs: [], wars: [], uplifted: [], growth: { step: 0, progress: 0 }, nextWar: 0, fuse: 0, nuclear: 0 });

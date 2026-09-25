@@ -119,7 +119,7 @@ export function registerSolarTests(test, assert, near) {
   });
   test('Arks: seven lights moor at Mars; each world opens with a technology on the axis, and each foothold takes one ark away for good', () => {
     const s=voyageFixture(),o=s.orbital,run=seconds=>{for(let i=0;i<Math.round(seconds*30);i++)updateOrbital(s,1/30);};
-    setDebugLegacy(s,2**39);const rejects=(raw,why)=>{let failed=false;try{parseSession(raw);}catch{failed=true;}assert(failed,why);};
+    setDebugLegacy(s,'1e13');const rejects=(raw,why)=>{let failed=false;try{parseSession(raw);}catch{failed=true;}assert(failed,why);};
     const land=()=>{while(o.solar.flights.length)run(1);};
     near(arrivalAt(o,'mars'),o.completionAt+PIONEER.seconds);assert(arksMoored(o)===0&&route(o,'venus').blocked==='harbor');
     for(const key of Object.keys(FACILITIES))assert(facilityState(s,key)==='prerequisite'&&!buildFacility(s,key));
@@ -144,7 +144,7 @@ export function registerSolarTests(test, assert, near) {
     assert(arkTotal(o)===ARK_COUNT&&arksAway(o)===ARK_COUNT&&reachNeed(o,'venus')==='无停泊方舟');
     assert(purchaseSolarTalent(s,'arkForge')&&arksMoored(o)===1);
     const venus=facilityRate(o,'venus');assert(purchaseSolarTalent(s,'refinery')&&facilityRate(o,'venus')===venus*2);
-    const industry=industryRate(o);assert(purchaseSolarTalent(s,'solarSail')&&purchaseSolarTalent(s,'smelter'));near(industryRate(o),industry*1.5);
+    const industry=industryRate(o);assert(purchaseSolarTalent(s,'solarSail')&&purchaseSolarTalent(s,'smelter'));near(industryRate(o),industry*1.25);
     // The axis is gold and leads to the Sun (VIII); Mars is one green region among the others.
     assert(['heat','mining','uplift','deepDrive','relay','stellar'].every(k=>SOLAR_TALENTS[k].gold&&SOLAR_TALENTS[k].x===SOLAR_TALENTS.voyage.x)&&!SOLAR_TALENTS.harbor.gold&&!SOLAR_TALENTS.dome.gold);
   });

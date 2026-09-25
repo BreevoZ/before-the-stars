@@ -10,6 +10,7 @@
     "sim": "node sim/run.js",
     "sim:batch": "node sim/batch.js",
     "sim:orbital": "node sim/orbital-run.js",
+    "sim:interplanetary": "node sim/interplanetary-run.js",
     "sim:traits": "node sim/traits.js"
   }
 }

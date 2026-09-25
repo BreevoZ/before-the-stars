@@ -30,16 +30,18 @@ const M = 2 ** 20, G = 2 ** 30, T = 2 ** 40;
 // yield: Legacy per second, doubling with every rank after the first.
 // boost: multiplies every yield facility, doubling per rank.
 // The first rank is paid when the ark is dispatched and built when it arrives.
+// Each further rank of a foothold costs ×3 and produces ×2.
+const ladder = (first, ranks) => Array.from({ length: ranks }, (_, i) => first * 3 ** i);
 const facility = (name, body, costs, kind, description, extra = {}) => Object.freeze({ name, body, costs: Object.freeze(costs), kind, description, ...extra });
 export const FACILITIES = Object.freeze({
-  venus: facility('高空浮空城', 'venus', [8 * M, 32 * M, 128 * M, 512 * M, 2 * G], 'yield', '在五十公里高空的温和云层里，浮空城采集大气，持续回流 Legacy。', { base: 32768 }),
-  mercury: facility('日冕阵列', 'mercury', [32 * M, 256 * M, 2 * G, 16 * G], 'boost', '贴近太阳铺开的集能阵列，为所有行星工业供能：每级产能翻倍。'),
-  belt: facility('采矿舰队', 'belt', [64 * M, 256 * M, G, 4 * G, 16 * G], 'yield', '从火星港出发，开采小行星的金属与冰。', { base: 262144 }),
-  jupiter: facility('气态采集站', 'jupiter', [512 * M, 2 * G, 8 * G, 32 * G], 'yield', '在木星高层大气中采集氦与氢。', { base: 2 * M }),
-  saturn: facility('冰环采集站', 'saturn', [4 * G, 16 * G, 64 * G, 256 * G], 'yield', '在土星环里开采纯净的水冰，送往内太阳系。', { base: 8 * M }),
-  uranus: facility('冰巨星采集站', 'uranus', [32 * G, 128 * G, 512 * G], 'yield', '从天王星倾斜的大气中提取氘与氦-3。', { base: 32 * M }),
-  neptune: facility('深空前哨', 'neptune', [256 * G, T, 4 * T], 'yield', '太阳系边缘的前哨，从海王星的风暴中采集重氢。', { base: 128 * M }),
-  pluto: facility('冰氮前哨', 'pluto', [512 * G, 2 * T, 8 * T], 'yield', '在冥王星的氮冰平原上开采挥发物，是柯伊伯带的第一个驻地。', { base: 256 * M }),
+  venus: facility('高空浮空城', 'venus', ladder(8 * M, 5), 'yield', '在五十公里高空的温和云层里，浮空城采集大气，持续回流 Legacy。', { base: 196608 }),
+  mercury: facility('日冕阵列', 'mercury', ladder(12 * M, 4), 'boost', '贴近太阳铺开的集能阵列，为所有行星工业供能：每级产能 ×1.5。'),
+  belt: facility('采矿舰队', 'belt', ladder(512 * M, 5), 'yield', '从火星港出发，开采小行星的金属与冰。', { base: 2 * M }),
+  jupiter: facility('气态采集站', 'jupiter', ladder(G, 4), 'yield', '在木星高层大气中采集氦与氢。', { base: 4 * M }),
+  saturn: facility('冰环采集站', 'saturn', ladder(16 * G, 4), 'yield', '在土星环里开采纯净的水冰，送往内太阳系。', { base: 16 * M }),
+  uranus: facility('冰巨星采集站', 'uranus', ladder(32 * G, 3), 'yield', '从天王星倾斜的大气中提取氘与氦-3。', { base: 32 * M }),
+  neptune: facility('深空前哨', 'neptune', ladder(512 * G, 3), 'yield', '太阳系边缘的前哨，从海王星的风暴中采集重氢。', { base: 256 * M }),
+  pluto: facility('冰氮前哨', 'pluto', ladder(T, 3), 'yield', '在冥王星的氮冰平原上开采挥发物，是柯伊伯带的第一个驻地。', { base: 512 * M }),
 });
 // Save v31 had no Pluto.
 export const V31_FACILITY_KEYS = Object.freeze(['venus', 'mercury', 'belt', 'jupiter', 'saturn', 'uranus', 'neptune']);
@@ -95,7 +97,7 @@ export const flightProgress = (o, f) => Math.max(0, Math.min(1, (o.elapsed - f.d
 
 // 日冕阵列 doubles every yield per rank; 近日熔炉 and 天卫四 add to all of them;
 // 大气提纯 and each giant's moon double their own world.
-export const industryBoost = o => 2 ** (o.solar.facilities.mercury ?? 0) * effectProduct(o, 'industry');
+export const industryBoost = o => 1.5 ** (o.solar.facilities.mercury ?? 0) * effectProduct(o, 'industry');
 export const facilityMultiplier = (o, key) => industryBoost(o) * effectProduct(o, 'yield', key);
 export function facilityRate(o, key) {
   const f = FACILITIES[key], rank = o.solar.facilities[key];

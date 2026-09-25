@@ -200,3 +200,18 @@ test('Simulation: automatic abilities/campaign accept talent loadouts and exterm
   near(normal.battles.reduce((sum, battle) => sum + battle.duration, 0), normal.duration);
   assert.equal(simulateRun({ ...options, automation: { ...options.automation, campaign: false } }).duration, normal.duration);
 });
+
+// VII pacing (npm run sim:interplanetary): a greedy player after a real VI run.
+// The axis opens the solar system in stages and the map fills in within the
+// 40–50 minutes VII is meant to last; the finale is priced from the plateau.
+test('Simulation: VII opens the axis in stages and fills the map within about 45 minutes', async () => {
+  const { simulateInterplanetary } = await import('../sim/interplanetary.js');
+  const r = simulateInterplanetary({ seed: 1, minutes: 50 });
+  const { mining, uplift, deepDrive, relay } = r.axis;
+  assert.ok(mining > 6 && mining < 18, `小行星采矿 at ${mining}`);
+  assert.ok(uplift > mining && uplift < 24, `殖民地存续协议 at ${uplift}`);
+  assert.ok(deepDrive > uplift && deepDrive < 28, `深空推进 at ${deepDrive}`);
+  assert.ok(relay > deepDrive + 4 && relay < 38, `深空中继 at ${relay}`);
+  assert.ok(r.boughtShare === 1 && r.bought.at(-1).at > 30 && r.bought.at(-1).at < 48, `Map done at ${r.bought.at(-1).at}`);
+  assert.ok(r.firstUplift !== null && r.colonyUplifted === 1, 'A colony is uplifted');
+});

@@ -45,24 +45,30 @@ export const SOLAR_REGIONS = Object.freeze([
   ['neptune', '海王星', 'NEPTUNE · 冰巨星', -1, 4], ['pluto', '冥王星', 'PLUTO · 柯伊伯带', 1, 4],
 ].map(([id, name, en, side, tier]) => Object.freeze({ id, name, en, side, tier })));
 const R = Object.fromEntries(SOLAR_REGIONS.map(r => [r.id, r]));
+// Prices follow the map: each tier has a base, a column further out costs ×2,
+// a row further up ×4, and every further rank of the same talent ×4. The
+// footholds' own ranks live with the facilities (solar-industry.js).
+export const TIER_PRICE = Object.freeze([4 * M, 8 * M, 512 * M, 16 * G, 512 * G]);
+const ladder = (first, ranks) => Array.from({ length: ranks }, (_, i) => first * 4 ** i);
+const priceAt = (region, col, row, ranks = 1) => ladder(TIER_PRICE[R[region].tier] * 2 ** col * 4 ** row, ranks);
 const place = (region, col, row, name, icon, extra) => { const r = R[region]; return node(name, at(r.side, r.tier, col, row).x, at(r.side, r.tier, col, row).y, icon, region, extra); };
 const world = (region, name, icon, gate, extra) => place(region, 0, 0, name, icon, { kind: 'planet', requires: { [gate]: 1 }, ...extra });
 // A moon's station extends its planet's foothold: a hexagon, stacked above the planet from the nearest moon out.
-const moon = (id, region, [col, row], name, icon, parent, cost, description, extra = {}) => place(region, col, row, name, icon, { satellite: id, costs: cost ? [cost] : [], requires: { [parent]: 1 }, description, ...extra });
+const moon = (id, region, [col, row], name, icon, parent, cost, description, extra = {}) => place(region, col, row, name, icon, { satellite: id, costs: extra.planned ? [] : priceAt(region, col + 1, row - 1), requires: { [parent]: 1 }, description, ...extra });
 // A planet talent: [col, row] in its region, price(s), what it needs, what it says.
-const talent = (region, [col, row], name, icon, costs, requires, description, extra = {}) => place(region, col, row, name, icon, { costs, requires, description, ...extra });
+const talent = (region, [col, row], name, icon, costs, requires, description, extra = {}) => place(region, col, row, name, icon, { costs: priceAt(region, col, row, costs.length), requires, description, ...extra });
 const axis = (name, tier, icon, cost, requires, description, extra = {}) => node(name, SOLAR_AXIS, tierY(tier), icon, 'axis', { costs: cost ? [cost] : [], requires, gold: true, description, ...extra });
 export const SOLAR_TALENTS = Object.freeze({
   voyage: node('远航协议', SOLAR_AXIS, BOTTOM, 'ark', 'axis', { root: true, kind: 'keystone', finale: true, gold: true, description: '七艘方舟结成先遣编队驶向火星。这一页星图从这里向上生长，也与轨道星图的顶端相连。' }),
   // The axis: each technology opens the next worlds out from the Sun.
-  heat: axis('耐热外壳', 1, 'heatshield', 12 * M, { voyage: 1 }, '为方舟加装耐热外壳，让它能在水星与金星的高温中停靠。解锁：水星、金星。'),
-  mining: axis('小行星采矿', 2, 'drill', 320 * M, { heat: 1 }, '在主带补给、造出聚变引擎：方舟航速 ×1.6。解锁：小行星带、木星。'),
+  heat: axis('耐热外壳', 1, 'heatshield', 8 * M, { voyage: 1 }, '为方舟加装耐热外壳，让它能在水星与金星的高温中停靠。解锁：水星、金星。'),
+  mining: axis('小行星采矿', 2, 'drill', 256 * M, { heat: 1 }, '在主带补给、造出聚变引擎：方舟航速 ×1.6。解锁：小行星带、木星。'),
   // Bringing another civilization to its own orbital age is part of the way on:
   // the outer system waits until one colony can run a world by itself.
-  uplift: node('殖民地存续协议', SOLAR_AXIS, SOLAR_TIERS[2].top - 150, 'accord', 'axis', { costs: [192 * M], requires: { mining: 1 }, kind: 'keystone', gold: true,
+  uplift: node('殖民地存续协议', SOLAR_AXIS, SOLAR_TIERS[2].top - 150, 'accord', 'axis', { costs: [2 * G], requires: { mining: 1 }, kind: 'keystone', gold: true,
     description: '把我们签过的那份协议递给殖民文明：第五时代的和平居民可以谈判签署；两个第五时代文明交战、一方基地跌破 35% 时可以接管双方核武——败方覆灭但没有核毁灭，胜方升格。每颗行星只能有一个升格文明：它不再参战、不受核冬天影响，产出是第五时代居民的 4 倍，并会自己开发这颗行星（大穹顶、太空电梯、环行星生存空间……），管理之后运来的新文明。' }),
-  deepDrive: axis('深空推进', 3, 'deepdrive', 16 * G, { uplift: 1 }, '能穿越巨行星之间漫长空隙的推进：方舟航速 ×2.2。解锁：土星、天王星。'),
-  relay: axis('深空中继', 4, 'relay', 128 * G, { deepDrive: 1 }, '在外太阳系布下通讯中继，方舟不再与火星失联。解锁：海王星、冥王星。'),
+  deepDrive: axis('深空推进', 3, 'deepdrive', 64 * G, { uplift: 1 }, '能穿越巨行星之间漫长空隙的推进：方舟航速 ×2.2。解锁：土星、天王星。'),
+  relay: axis('深空中继', 4, 'relay', 2 * T, { deepDrive: 1 }, '在外太阳系布下通讯中继，方舟不再与火星失联。解锁：海王星、冥王星。'),
   stellar: node('恒星协议', SOLAR_AXIS, SOLAR_TIERS_TOP() - 250, 'dyson', 'axis', { planned: true, requires: { relay: 1 }, finale: true, kind: 'keystone', gold: true, gate: '需要一个升格文明',
     description: 'VII 的终点：把太阳系的工业与升格文明转向太阳，立项开发恒星本身，进入 VIII · 恒星。戴森群将在 VIII 中一步步建起。需要深空中继与至少一个升格文明。（后续开放）' }),
   // ── Earth–Moon: the harbour that is always there, the yards and the crossing. Columns: yards · navigation · convoy · lift.
@@ -76,7 +82,7 @@ export const SOLAR_TALENTS = Object.freeze({
   academy: talent('earth', [2, 1], '殖民学院', 'academy', [G], { fleet: 1 }, '启程前在地月港集训：转运的文明抵达火星时进化一个时代（最高第五时代）。', { kind: 'keystone' }),
   spaceElevator: talent('earth', [3, 0], '地球轨道电梯', 'tether', [256 * M], { fleet: 1 }, '从赤道拉起的缆绳把文明送上轨道：文明转运的价格降低 20%。'),
   // ── Mars: the harbour where the fleet moors, the colony, and how it survives. Columns: moons · dome · transfer · uplift.
-  harbor: world('mars', '火星港', 'harbor', 'voyage', { costs: [24 * M], arrival: 'mars',
+  harbor: world('mars', '火星港', 'harbor', 'voyage', { costs: [8 * M], arrival: 'mars',
     description: '先遣编队停泊的地方。建起船坞后，停泊的方舟可以一艘艘派往其他世界；每派出一艘，火星旁就少一点灯火。' }),
   phobos: moon('phobos', 'mars', [0, 1], '火卫一', 'elevator', 'harbor', 256 * M, '轨道升降站：从火卫一向火星放下缆绳，文明转运的价格降低 25%。'),
   deimos: moon('deimos', 'mars', [0, 2], '火卫二', 'berth', 'phobos', 512 * M, '转运泊位：转运方舟在火卫二减速入轨，文明转运的航程缩短 20%。'),
