@@ -10,9 +10,9 @@ import { drawShipyard } from '../src/shipyard-render.js';
 import { drawStar } from '../src/stellar-render.js';
 import { createSolarVisualHistory, arkArc, dockPosition } from '../src/solar-travel.js';
 import { marsDevelopment } from '../src/solar-world-effects.js';
-import { drawBattleScene, MARS_PALETTE } from '../src/render.js';
+import { drawBattleScene, drawLandscape, MARS_PALETTE } from '../src/render.js';
 import { createGame } from '../src/game.js';
-import { drawStructure, structureFrame, projectStructure, surfaceStructure, colonyLayout } from '../src/structure-models.js';
+import { drawStructure, structureFrame, projectStructure, surfaceStructure, colonyLayout, STRUCTURE_KINDS, worldStructureSize } from '../src/structure-models.js';
 import { drawPlanetSphere } from '../src/planet-render.js';
 import { BODIES } from '../src/solar-config.js';
 import { mountFixture } from './progression-cases.js';
@@ -38,6 +38,23 @@ export function registerSolarVisualTests(test,assert,near){
     }assert(images.size===9);
     x.clearRect(0,0,260,220);const empty=c.toDataURL(),g={x:130,y:110,r:85};surfaceStructure(x,g,{x:0,y:0,z:-1},3,'outpost');assert(c.toDataURL()===empty);
     surfaceStructure(x,g,{x:0,y:0,z:1},3,'outpost');assert(c.toDataURL()!==empty);
+  });
+  test.browser('VII visual legibility: every model retains lit surfaces and a distinct footprint at mobile-world size',()=>{
+    const c=canvas(80,80),x=c.getContext('2d'),size=worldStructureSize(70),masks=new Set(),issues=[];
+    for(const kind of STRUCTURE_KINDS)for(const backlit of [false,true]){
+      x.clearRect(0,0,80,80);drawStructure(x,40,40,size,kind,{yaw:.55,pitch:.65,normal:backlit?{x:-.7,y:0,z:Math.sqrt(.51)}:null,detail:{slots:4,ages:[1,2,4,5]}});
+      const pixels=x.getImageData(0,0,80,80).data;let count=0,total=0,bright=0;const mask=[];
+      for(let i=0;i<pixels.length;i+=4)if(pixels[i+3]>=160){const l=pixels[i]*.2126+pixels[i+1]*.7152+pixels[i+2]*.0722;count++;total+=l;if(l>110)bright++;mask.push(i/4);}
+      if(count<12||total/count<=80||bright<3)issues.push(`${kind} ${backlit?'backlit':'front'}: ${count} pixels, luminance ${total/count}, ${bright} lit pixels`);
+      if(!backlit)masks.add(mask.join(','));
+    }assert(issues.length===0,issues.join('; '));assert(masks.size===STRUCTURE_KINDS.length,'Small silhouettes collapsed into identical shapes');
+  });
+  test.browser('VII visual Mars sun: disc and halo shrink with distance; Earth keeps its original radius',()=>{
+    const c=canvas(1280,560),x=c.getContext('2d'),arc=x.arc.bind(x),gradient=x.createRadialGradient.bind(x);let disc=0,halos=[];
+    x.arc=(...args)=>{if(x.fillStyle==='#ffe3a5')disc=args[2];return arc(...args);};
+    x.createRadialGradient=(...args)=>{halos.push(args[5]);return gradient(...args);};
+    const paint=palette=>{disc=0;halos=[];drawLandscape(x,560,450,(palette?.daySeconds??120)*.25,0,palette);return{disc,halos};};
+    const earth=paint(null),mars=paint(MARS_PALETTE);near(earth.disc,32);near(mars.disc,32/1.52);assert(mars.disc<earth.disc*.7);near(mars.halos.at(-1),earth.halos.at(-1)/1.52);
   });
   test('VII visual history: arrivals are bounded, edge-triggered, read-only and never replayed after reload',()=>{
     const s=voyageFixture(),o=s.orbital,h=createSolarVisualHistory(),raw=serializeSession(s);assert(h.observe(o).length===0&&serializeSession(s)===raw);

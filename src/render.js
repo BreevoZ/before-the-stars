@@ -1,5 +1,6 @@
 import { Q } from './quantity.js';
 import { dayPhase, lunarOrbitAngle, lunarSkyAngle } from './celestial-clock.js';
+import { bodyById } from './solar-config.js';
 import { drawTurret } from './turrets.js';
 import { RULES, UNITS, AGES, ABILITIES, getTurretPosition, getAbilityRadius, getAbilityImpactX, getUnitHealth, getUnitChargeTarget, attributes } from './game.js';
 import { drawUnit } from './units.js';
@@ -43,6 +44,7 @@ for (const frame of LANDSCAPE_KEYFRAMES) {
 
 // Optional environment colours; the default painter remains pixel-identical.
 export const MARS_PALETTE = Object.freeze({
+  solarDistance:bodyById('mars').au,
   daySeconds:123.12,sky:['#777f87','#b9a593','#ddc6a3'],mountains:['#8e8272','#776a59','#5c5648'],ground:['#b7a081','#625847','#413e35','#8b7b5f','#a99674'],
   rubble:['#79695036','#a3957725'],moons:[{period:5.60,phase:1.4,r:5},{period:22.18,phase:4.4,r:3}],
 });
@@ -87,11 +89,12 @@ const celestialPoint = (ground, angle) => ({ x: RULES.width / 2 - Math.cos(angle
 // wherever the sun is (even below the horizon), and the dark part keeps a faint earthshine.
 // By day the sky washes the moon out: its dark part and glow vanish, the lit
 // part pales, and close to the sun it fades away entirely, as a young moon does.
-function drawCelestialBody(ctx, ground, angle, moon, { sunAngle = angle + Math.PI, elongation = Math.PI } = {}) {
+function drawCelestialBody(ctx, ground, angle, moon, { sunAngle = angle + Math.PI, elongation = Math.PI, solarDistance = 1 } = {}) {
   const elevation = Math.sin(angle);
   if (elevation < -0.15) return;
   const { x, y } = celestialPoint(ground, angle);
-  const radius = moon ? 27 : 32, lit = moon ? (1 - Math.cos(elongation)) / 2 : 1;
+  // Relative apparent diameter follows distance; Earth keeps its original art scale.
+  const radius = moon ? 27 : 32 / solarDistance, lit = moon ? (1 - Math.cos(elongation)) / 2 : 1;
   const clamp01 = value => Math.min(1, Math.max(0, value));
   const daylight = moon ? clamp01((Math.sin(sunAngle) + 0.1) / 0.35) : 0;
   const separation = Math.acos(Math.cos(elongation)), nearSun = clamp01((separation - 0.3) / 0.6);
@@ -158,7 +161,7 @@ export function drawLandscape(ctx, height, ground, time, lunarTime = time, palet
     for(const m of palette.moons){const a=m.phase+time/m.period*Math.PI*2,p=celestialPoint(ground,a);if(Math.sin(a)<0)continue;
       ctx.save();ctx.translate(p.x,p.y);ctx.rotate(a);polygon(ctx,[[-m.r,-m.r*.4],[-m.r*.3,-m.r*.7],[m.r*.8,-m.r*.4],[m.r,m.r*.4],[0,m.r*.7],[-m.r*.8,m.r*.3]],'#b2b3a077');line(ctx,[[-m.r*.2,-m.r*.5],[m.r*.5,-m.r*.3]],'#d0c8ad88',.7);ctx.restore();}
   }else drawCelestialBody(ctx, ground, lunarSkyAngle(sunAngle, lunarTime), true, { sunAngle, elongation: orbit });
-  drawCelestialBody(ctx, ground, sunAngle, false);
+  drawCelestialBody(ctx, ground, sunAngle, false, { solarDistance: palette?.solarDistance ?? 1 });
 
   polygon(ctx, [[0, ground], [0, ground - 115], [95, ground - 149], [171, ground - 114],
     [284, ground - 195], [361, ground - 121], [425, ground - 155], [568, ground - 83],

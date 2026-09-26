@@ -1,4 +1,4 @@
-import { surfaceStructure } from './structure-models.js';
+import { surfaceStructure, worldStructureSize } from './structure-models.js';
 import { drawPlanetSphere } from './planet-render.js';
 import { satellitesOf, destination, surfaceOf, satellitePeriodSeconds } from './solar-bodies.js';
 import { drawOrbitStars } from './orbital-render.js';
@@ -56,14 +56,14 @@ export function drawBeltScene(c,w,h,o,time){
     if(i===0&&rank)drawArkLight(c,x+r+4,y,{radius:.9,glow:6});
   }
   if(t.swarm)for(let i=0;i<18;i++){const x=w*(.12+noise(i+701)*.77)+Math.sin(time*.12+i)*5,y=h*(.28+noise(i+717)*.49);structure(c,x,y,.35,'tug',{angle:i});}
-  if(t.redirect){const x=w*.72+Math.sin(time*.018)*w*.03,y=h*.67;rock(c,x,y,12,9,time);structure(c,x-36,y-8,.8,'tug');line(c,[[x-29,y-8],[x-7,y-2]],'#bac6ac55',.6);}
-  if(t.vestaMines){const x=w*.75,y=h*.36,vr=Math.min(w*.065,h*.095);rock(c,x,y,vr,22,time);line(c,[[x-vr*.3,y],[x,y+vr*.25],[x+vr*.2,y]],'#19292e',Math.max(1,vr*.12));structure(c,x-vr*.2,y-vr*.1,.8,'station');c.fillStyle='#81968b';c.font='9px system-ui';c.fillText('灶神星',x,y+vr+16);}
+  if(t.redirect){const x=w*.72+Math.sin(time*.018)*w*.03,y=h*.67;rock(c,x,y,12,9,time);structure(c,x-36,y-8,1.4,'tug');line(c,[[x-29,y-8],[x-7,y-2]],'#bac6ac55',.6);}
+  if(t.vestaMines){const x=w*.75,y=h*.36,vr=Math.min(w*.065,h*.095);rock(c,x,y,vr,22,time);line(c,[[x-vr*.3,y],[x,y+vr*.25],[x+vr*.2,y]],'#19292e',Math.max(1,vr*.12));structure(c,x-vr*.2,y-vr*.1,1.3,'station');c.fillStyle='#81968b';c.font='9px system-ui';c.fillText('灶神星',x,y+vr+16);}
   const ceres={id:'ceres',name:'谷神星',color:'#9ca799',surface:'rock'},r=Math.min(w*.14,h*.21);
   drawPlanetSphere(c,ceres,w*.37,h*.49,r,{time});
-  if(t.ceresDepot)surfaceStructure(c,{x:w*.37,y:h*.49,r},surfaceSite(ceres,time,.25,.18),r*.017,'outpost');
+  if(t.ceresDepot)surfaceStructure(c,{x:w*.37,y:h*.49,r},surfaceSite(ceres,time,.25,.18),worldStructureSize(r,.017),'outpost');
   for(let i=0;i<Math.min(rank,5);i++){
     const x=w*(.14+i*.15)+Math.sin(time*.05+i)*6,y=h*(.33+noise(i+3)*.4);
-    structure(c,x,y,1,'tug',{angle:-.15});
+    structure(c,x,y,1.6,'tug',{angle:-.15});
     for(let k=0;k<3;k++){const phase=(time*.7+k/3)%1;c.save();c.globalAlpha=(1-phase)*.5;line(c,[[x+6+phase*4,y+k-1],[x+8+phase*5,y+k-1]],'#c6b99b',.5);c.restore();}
   }
   c.fillStyle='#a8b7a7';c.font='10px system-ui,sans-serif';c.textAlign='center';c.fillText('谷神星',w*.37,h*.49+r+22);

@@ -1,4 +1,4 @@
-import { surfaceStructure } from './structure-models.js';
+import { surfaceStructure, worldStructureSize } from './structure-models.js';
 import { surfacePoint, spinOf, terrainOffset } from './planet-render.js';
 import { surfaceOf } from './solar-bodies.js';
 import { householdsPerDome, domeCapacity } from './solar-colony.js';
@@ -23,7 +23,7 @@ function mark(c,g,p,draw){
   if(p.z<=.04)return;c.save();c.translate(g.x+p.x*g.r,g.y+p.y*g.r);c.rotate(Math.atan2(p.y,p.x));c.scale(Math.max(.15,p.z),1);draw();c.restore();
 }
 export function drawSurfaceWorks(c,g,body,o,time,{reducedMotion=false}={}){
-  const t=o.solar.talents,rank=o.solar.facilities[body.id]??0,s=g.r*.012,at=(lon,lat)=>surfaceSite(body,time,lon,lat);
+  const t=o.solar.talents,rank=o.solar.facilities[body.id]??0,s=worldStructureSize(g.r),at=(lon,lat)=>surfaceSite(body,time,lon,lat);
   const place=(p,kind,size=s,options={})=>surfaceStructure(c,g,p,size,kind,options);
   c.save();c.beginPath();c.arc(g.x,g.y,g.r,0,TAU);c.clip();
   if(body.parent&&t[body.id]){
@@ -36,7 +36,7 @@ export function drawSurfaceWorks(c,g,body,o,time,{reducedMotion=false}={}){
       const capacity=domeCapacity(o),ages=homes.map(c=>c.age);
       if(d.elevator&&homes.length+o.solar.transfers.filter(tr=>tr.to==='mars').length<capacity)ages.unshift(0);
       place(at(.36,.16),'colony',s*1.2,{lit:winter?0:1,detail:{slots:capacity,ages}});
-    }else for(let i=0;i<count;i++)place(at(.22+i*.18,.13+(i%2)*.13),'colony',s*.72,{lit:winter?0:1,detail:{slots:per,ages:homes.slice(i*per,(i+1)*per).map(c=>c.age)}});
+    }else for(let i=0;i<count;i++)place(at(.06+i*.3,.06+(i%2)*.27),'colony',s*.95,{lit:winter?0:1,detail:{slots:per,ages:homes.slice(i*per,(i+1)*per).map(c=>c.age)}});
     if(d.survey){const a=at(.36,.16);for(let i=0;i<3;i++){const b=at(.54+i*.16,-.08+i*.06);if(a.z>.04&&b.z>.04){line(c,[[g.x+a.x*g.r,g.y+a.y*g.r],[g.x+b.x*g.r,g.y+b.y*g.r]],'#67756655',.6);place(b,'tug',s*.32,{angle:.4+i*.5});}}}
   }
   if(body.id==='mercury'){
@@ -64,14 +64,14 @@ export function drawSurfaceWorks(c,g,body,o,time,{reducedMotion=false}={}){
   c.restore();
 }
 export function drawOrbitalWorks(c,g,body,o,time,front,{reducedMotion=false}={}){
-  const t=o.solar.talents,rank=o.solar.facilities[body.id]??0,s=Math.max(.4,g.r*.012);
+  const t=o.solar.talents,rank=o.solar.facilities[body.id]??0,s=worldStructureSize(g.r);
   const orbit=(r,a,tilt=0,flatten=.32)=>{const x=Math.cos(a)*g.r*r,y=Math.sin(a)*g.r*r*flatten;return{x:g.x+x*Math.cos(tilt)-y*Math.sin(tilt),y:g.y+x*Math.sin(tilt)+y*Math.cos(tilt),z:Math.sin(a)};};
   const on=(p,draw)=>{if((p.z>=0)===front)draw(p);};
   if(body.id==='mars'){
     const d=marsDevelopment(o);habitatRing(c,g,d.rings,d.building,front,time);
     const p=surfaceSite(body,time,.4,0);if(d.elevator&&(p.z>=0)===front)tether(c,g.x,g.y,g.r,p,{time,reducedMotion});
     if(front){const homes=o.solar.colonies.mars.civs,per=householdsPerDome(o),arrivals=[...homes.map((civ,i)=>({i,age:o.elapsed-civ.arrivedAt})),...o.solar.transfers.filter(tr=>tr.to==='mars').map((tr,i)=>({i:homes.length+i,age:o.elapsed-tr.arriveAt+2}))];
-      for(const item of arrivals){const dome=Math.floor(item.i/per)%Math.max(1,t.dome),p=surfaceSite(body,time,d.grand?.36:.22+dome*.18,d.grand?.16:.13+(dome%2)*.13);if(p.z>.04)drawTransferDescent(c,g.x+p.x*g.r,g.y+p.y*g.r,g.r*1.05,item.age,{reducedMotion});}}
+      for(const item of arrivals){const dome=Math.floor(item.i/per)%Math.max(1,t.dome),p=surfaceSite(body,time,d.grand?.36:.06+dome*.3,d.grand?.16:.06+(dome%2)*.27);if(p.z>.04)drawTransferDescent(c,g.x+p.x*g.r,g.y+p.y*g.r,g.r*1.05,item.age,{reducedMotion});}}
   }
   if(body.id==='venus'&&t.sunshade&&!front){c.save();c.translate(g.x+g.r*.9,g.y-g.r*.2);c.rotate(-.3);c.fillStyle='#b3bfa21e';c.strokeStyle='#c6d0b23e';c.lineWidth=.6;c.beginPath();c.ellipse(0,0,g.r*.17,g.r*.65,0,0,TAU);c.fill();c.stroke();c.restore();}
   if(body.id==='mercury'&&front){

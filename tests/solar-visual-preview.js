@@ -4,12 +4,12 @@ import { drawWorldScene } from '../src/solar-world-render.js';
 import { drawDomes } from '../src/dome-render.js';
 import { drawLunarColony, drawOrbitalColony } from '../src/orbital-render.js';
 import { drawShipyard } from '../src/shipyard-render.js';
-import { drawBattleScene, MARS_PALETTE } from '../src/render.js';
+import { drawBattleScene, drawLandscape, MARS_PALETTE } from '../src/render.js';
 import { createGame, RULES } from '../src/game.js';
-import { drawStructure } from '../src/structure-models.js';
+import { drawStructure, STRUCTURE_KINDS, worldStructureSize } from '../src/structure-models.js';
 import { winterSeconds } from '../src/colony-war.js';
 const el=id=>document.getElementById(id),canvases=[],game=createGame();let session,time=0,last=0;
-const add=(title,paint,short=false)=>{const section=document.createElement('section'),h=document.createElement('h2'),c=document.createElement('canvas');h.textContent=title;section.append(h,c);el('gallery').append(section);canvases.push({c,paint,short});};
+const add=(title,paint,short=false,height=null)=>{const section=document.createElement('section'),h=document.createElement('h2'),c=document.createElement('canvas');h.textContent=title;section.append(h,c);el('gallery').append(section);canvases.push({c,paint,short,height});};
 add('SOL / 太阳系航图',(c,w,h,o,opt)=>drawSolarSystem(c,w,h,o,opt));
 add('STRUCTURES / 结构近景', (c,w,h,o,opt)=>{
   c.fillStyle='#142123';c.fillRect(0,0,w,h);const kinds=[['collector','气态采集器'],['outpost','卫星驻地'],['colony','玻璃穹顶'],['array','集能阵列'],['dock','环中船坞'],['tug','矿业拖船']],cols=w<500?2:3,rows=Math.ceil(kinds.length/cols),cw=w/cols,ch=h/rows;
@@ -17,6 +17,24 @@ add('STRUCTURES / 结构近景', (c,w,h,o,opt)=>{
     drawStructure(c,x,y,scale,kind,{yaw:.55+(opt.reducedMotion?0:opt.time*.02),pitch:.6,shadow:['outpost','colony','array'].includes(kind),detail:{slots:4,ages:[1,2,4,5]}});
     c.fillStyle='#a7b4a0';c.font='10px system-ui';c.textAlign='center';c.fillText(name,x,(Math.floor(i/cols)+1)*ch-12);});
 });
+const names={collector:'气态采集器 · 开口漏斗',outpost:'卫星驻地 · 双压力舱',station:'轨道站 · 四翼长脊',dock:'船坞 · 开放门架',tug:'拖船 · 分叉牵引臂',array:'集能阵列 · 三叶板',balloon:'浮空城 · 气囊吊舱',probe:'探测器 · 碟盘双翼',kite:'风筝 · 菱形帆',city:'城市 · 阶梯楼群',archive:'档案库 · 密封台体',colony:'殖民穹顶 · 玻璃骨架',dome:'前哨穹顶 · 单罩气闸',rail:'发射轨道 · 双轨枕木'};
+add('STRUCTURES / 远景辨识',(c,w,h,o,opt)=>{
+  c.fillStyle='#142123';c.fillRect(0,0,w,h);const cols=w<500?2:4,cw=w/cols,ch=180;
+  STRUCTURE_KINDS.forEach((kind,i)=>{const left=i%cols*cw,top=Math.floor(i/cols)*ch,x=left+cw*.5;
+    const model={yaw:.55+(opt.reducedMotion?0:opt.time*.02),pitch:.65,detail:{slots:4,ages:[1,2,4,5]}};
+    drawStructure(c,x,top+57,Math.min(5,cw/30),kind,model);
+    c.fillStyle='#a7b4a0';c.font='10px system-ui';c.textAlign='center';c.fillText(names[kind],x,top+96);
+    // Identical geometry at the actual mobile-world size; never enlarge this row.
+    drawStructure(c,x-30,top+127,worldStructureSize(70),kind,model);
+    drawStructure(c,x+30,top+127,worldStructureSize(70),kind,{...model,normal:{x:-.7,y:0,z:Math.sqrt(.51)},lit:.7});
+    c.fillStyle='#81978b';c.font='9px system-ui';c.fillText('远景 / 背光',x,top+160);
+  });
+},false,w=>Math.ceil(STRUCTURE_KINDS.length/(w<500?2:4))*180);
+add('SKY / 同一画幅的地球与火星太阳',(c,w,h)=>{
+  const cw=w/2,scale=cw/RULES.width;
+  for(const [i,palette]of [null,MARS_PALETTE].entries()){c.save();c.translate(i*cw,24);c.beginPath();c.rect(0,0,cw,h-24);c.clip();c.scale(scale,scale);drawLandscape(c,(h-24)/scale,450,(palette?.daySeconds??120)*.25,0,palette);c.restore();}
+  c.fillStyle='#a7b4a0';c.font='10px system-ui';c.textAlign='center';c.fillText('EARTH / 1 AU',cw/2,14);c.fillText('MARS / 1.52 AU',cw*1.5,14);
+},true);
 add('MARS / 穹顶聚落',(c,w,h,o,opt)=>drawDomes(c,w,h,o,opt),true);
 for(const body of DESTINATIONS.filter(b=>b.id!=='earth'))add(body.name,(c,w,h,o,opt)=>drawWorldScene(c,w,h,body,o,opt));
 add('EARTH / 轨道电梯',drawOrbitalColony);add('MOON / 电磁轨道',drawLunarColony);add('MOON / 第二泊位',drawShipyard);
@@ -26,7 +44,7 @@ function reset(){session=visualFixture({developed:el('state').value!=='bare'});c
   if(state==='growth')w.growth={step:6,progress:25};
   if(state==='travel'){o.solar.facilities.venus=0;o.solar.flights=[{from:'mars',body:'venus',departAt:0,arriveAt:30}];o.solar.transfers=[{to:'mars',civ:{id:'incoming',age:4},departAt:0,arriveAt:35}];}
   time=0;el('time').value=0;resize();}
-function resize(){const w=Number(el('width').value);el('gallery').style.maxWidth=`${w}px`;for(const {c,short}of canvases){c.width=w;c.height=short?190:w<500?340:500;}}
+function resize(){const w=Number(el('width').value);el('gallery').style.maxWidth=`${w}px`;for(const {c,short,height}of canvases){c.width=w;c.height=height?height(w):short?190:w<500?340:500;}}
 el('width').onchange=resize;el('state').onchange=reset;el('time').oninput=()=>{time=Number(el('time').value);el('play').checked=false;};reset();
 function frame(now){if(el('play').checked&&!document.hidden)time=(time+Math.min(.1,(now-last)/1000))%120;last=now;session.orbital.elapsed=time;
   const o=session.orbital,state=el('state').value,mars=o.solar.colonies.mars,events=[];
