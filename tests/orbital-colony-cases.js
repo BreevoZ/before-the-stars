@@ -24,7 +24,7 @@ import { mountFixture } from './progression-cases.js';
 
 export function colonyFixture({started=true,seed=1,seconds=0,legacy=0,talents=[]}={}){
   const s=launchReady();purchaseTalent(s,'bypasser');s.orbital=createOrbitalState(seed);s.debug=true;s.debugSpeed=10;setDebugLegacy(s,legacy);
-  if(started)enterOrbital(s);for(const key of talents)purchaseOrbitalTalent(s,key);
+  if(started)enterOrbital(s);for(const key of talents){if(key==='recovery'&&!s.orbital.talents.elevator)purchaseOrbitalTalent(s,'elevator');purchaseOrbitalTalent(s,key);}
   if(seconds){const c=s.orbital.civilizations;startOrbitalWar(s,c[0].id,c[1].id);for(let i=0;i<Math.round(seconds*30);i++)updateOrbital(s,1/30);}
   return s;
 }
@@ -59,7 +59,7 @@ export function registerOrbitalColonyTests(test,assert,near){
     const a=sitePosition(SITES[0],0),b=sitePosition(SITES[0],30);assert(a.x!==b.x&&a.depth!==b.depth);
   });
   test('Orbital habitat: each purchase adds one section and retains the original doubling; protocol glyph is shared',()=>{
-    const s=colonyFixture({legacy:5000000});const value=civilizationValue(s.orbital,s.orbital.civilizations[0]);
+    const s=colonyFixture({legacy:5000000,talents:['elevator']});const value=civilizationValue(s.orbital,s.orbital.civilizations[0]);
     for(let rank=1;rank<=7;rank++){assert(purchaseOrbitalTalent(s,'recovery'));assert(habitatSegments(rank).length===rank);assert(civilizationValue(s.orbital,s.orbital.civilizations[0])===value*2**rank);}
     assert(!purchaseOrbitalTalent(s,'recovery')&&T.recovery.costs.length===7);
     assert(T.protocol.icon==='protocol'&&icon(T.protocol.icon).includes(PROTOCOL_GLYPH));
@@ -107,7 +107,7 @@ export function registerOrbitalColonyTests(test,assert,near){
     const war=o.wars[0],[a,b]=war.participants.map(id=>findCivilization(o,id));
     const costs=[];for(let i=0;i<R.maximumPower;i++){const wallet=s.permanent.legacy;assert(intervene(s,a.id,'boost'));costs.push(Q.toNumber(Q.sub(wallet,s.permanent.legacy)));}
     assert(JSON.stringify(costs)===JSON.stringify([64,256,1024,4096,16384])&&getInterventionState(s,a.id,'boost')==='max');
-    purchaseOrbitalTalent(s,'recovery');assert(interventionCost(o,b,'boost')===128,'The ring raises intervention prices with rewards');
+    assert(purchaseOrbitalTalent(s,'elevator'));purchaseOrbitalTalent(s,'recovery');assert(interventionCost(o,b,'boost')===128,'The ring raises intervention prices with rewards');
     const gold=war.game.gold.enemy;assert(intervene(s,b.id,'airdrop'));assert(Q.eq(war.game.gold.enemy,Q.add(gold,AGES[b.age].startingGold*R.airdropGold))&&Q.eq(b.gold,war.game.gold.enemy)&&b.airdrops===1);
     assert(interventionCost(o,b,'airdrop')===2*ACTIONS.airdrop.baseCost*2);
     const odds=buildOrbitalViewModel(s)['#colony-war-player'];assert(/胜率 \d+%/.test(odds));
@@ -125,7 +125,7 @@ export function registerOrbitalColonyTests(test,assert,near){
   });
   test('v22: 轨道收割 moves under 知识封锁, earlier harvesters keep it with a free lock, and eight civilizations can fight four wars',()=>{
     const s=colonyFixture({legacy:100000,talents:['monitor','patronage']});
-    const old=JSON.parse(serializeSession(s));old.version=21;old.orbital.version=7;delete old.orbital.seedTendency;delete old.orbital.solar;
+    const old=JSON.parse(serializeSession(s));delete old.orbital.talents.elevator;delete old.orbital.payments.elevator;old.version=21;old.orbital.version=7;delete old.orbital.seedTendency;delete old.orbital.solar;
     for(const key of ['overview','quickening','chronicle','directed','fallout'])delete old.orbital.talents[key];
     old.orbital.talents.harvest=1;old.orbital.payments.harvest=['2048'];
     const migrated=parseSession(JSON.stringify(old));
@@ -263,7 +263,7 @@ export function registerOrbitalColonyTests(test,assert,near){
     const s=colonyFixture({legacy:10000});assert(s.orbital.talents.protocol===1&&getOrbitalTalentState(s,'protocol')==='max');
     assert(getOrbitalTalentState(s,'harvest')==='prerequisite');assert(purchaseOrbitalTalent(s,'monitor'));assert(s.permanent.legacy===9872);
     for(let i=0;i<3;i++)assert(purchaseOrbitalTalent(s,'reseed'));assert(!purchaseOrbitalTalent(s,'reseed'));near(rebirthDelay(s.orbital),60*.75**3);
-    const c=s.orbital.civilizations[0],before=civilizationValue(s.orbital,c);assert(purchaseOrbitalTalent(s,'recovery'));assert(civilizationValue(s.orbital,c)===before*2);
+    assert(purchaseOrbitalTalent(s,'elevator'));const c=s.orbital.civilizations[0],before=civilizationValue(s.orbital,c);assert(purchaseOrbitalTalent(s,'recovery'));assert(civilizationValue(s.orbital,c)===before*2);
     assert(!purchaseOrbitalTalent(s,'outpost'));parseSession(serializeSession(s));
   });
   test('Orbital intervention: live troop amplification uses the stat pipeline, costs Legacy, preserves health ratio and shot snapshots',()=>{

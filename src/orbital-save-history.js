@@ -16,7 +16,12 @@ export const V17_ORBITAL_TALENTS = Object.freeze({
 });
 // v19–v23 bought the entire fleet in a single transaction.
 export const OLD_SHIPYARD_COST = 4194304;
+export function v34OrbitalTalents(current){
+  const talents=Object.fromEntries(Object.entries(current).filter(([key])=>key!=='elevator'));
+  talents.recovery={...talents.recovery,requires:{protocol:1}};return Object.freeze(talents);
+}
 export function v23OrbitalTalents(current){
+  current=v34OrbitalTalents(current);
   const talents=Object.fromEntries(Object.entries(current).map(([key,t])=>[key,{costs:t.costs,requires:t.requires,...(t.cycles?{cycles:t.cycles}:{}),...(t.ring?{ring:t.ring}:{})}]));
   talents.shipyard={...talents.shipyard,costs:[OLD_SHIPYARD_COST]};
   talents.voyage={...talents.voyage,requires:{shipyard:1}};

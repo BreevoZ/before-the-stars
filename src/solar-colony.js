@@ -80,7 +80,7 @@ export const SOLAR_TALENTS = Object.freeze({
   launchRail: talent('earth', [1, 2], '电磁发射轨道', 'rail', [512 * M], { hohmann: 1 }, '转运方舟从月面电磁轨道起飞：文明转运的航程缩短 20%。'),
   fleet: talent('earth', [2, 0], '转运舰队', 'convoy', [256 * M, 2 * G], { survey: 1 }, '每级多一艘转运方舟，可同时在途的转运加一。'),
   academy: talent('earth', [2, 1], '殖民学院', 'academy', [G], { fleet: 1 }, '启程前在地月港集训：转运的文明抵达火星时进化一个时代（最高第五时代）。', { kind: 'keystone' }),
-  spaceElevator: talent('earth', [3, 0], '地球轨道电梯', 'tether', [256 * M], { fleet: 1 }, '从赤道拉起的缆绳把文明送上轨道：文明转运的价格降低 20%。'),
+  spaceElevator: talent('earth', [3, 0], '升降港扩容', 'tether', [256 * M], { fleet: 1 }, '扩建 VI 已建的太空电梯港口与货运舱：文明转运的价格降低 20%。'),
   // ── Mars: the harbour where the fleet moors, the colony, and how it survives. Columns: moons · dome · transfer · uplift.
   harbor: world('mars', '火星港', 'harbor', 'voyage', { costs: [8 * M], arrival: 'mars',
     description: '先遣编队停泊的地方。建起船坞后，停泊的方舟可以一艘艘派往其他世界；每派出一艘，火星旁就少一点灯火。' }),

@@ -6,11 +6,10 @@ const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]
 const dot=(a,b)=>a.reduce((n,x,i)=>n+x*b[i],0);
 const add=(a,b)=>a.map((x,i)=>x+b[i]);
 export const STRUCTURE_SUN=Object.freeze(normalize([.88,-.34,.36]));
-const HALF=normalize(add(STRUCTURE_SUN,[0,0,1]));
 // A pale shell, blue-grey working surfaces and warm structural metal remain
 // separate values even when the whole building occupies only 15–25 pixels.
 const HULL=[204,213,190],DARK=[108,134,133],PANEL=[112,157,164],STONE=[152,158,132],GLASS=[181,211,204],FABRIC=[220,207,164],METAL=[186,178,142];
-export const STRUCTURE_KINDS=Object.freeze(['collector','outpost','station','dock','tug','array','balloon','probe','kite','city','archive','colony','dome','rail']);
+export const STRUCTURE_KINDS=Object.freeze(['collector','outpost','station','dock','tug','array','balloon','probe','kite','city','archive','colony','dome','rail','factory']);
 // Main worlds need a readable footprint; a moon in the overview stays miniature.
 export const worldStructureSize=(radius,relative=.012)=>Math.max(radius*relative,Math.min(1.65,radius*.027));
 const models=new Map();
@@ -97,6 +96,13 @@ function model(kind,detail={}){
     box(-.5,-1.3,.25,1.3,3,1.1,DARK);pod(4,-1.65,.75,2,1.4);
     panel(-4.3,1.2,.6,2.3,2.4,.4);windows(-2.7,-2.77,1,3.4);
     box(2,2.6,0,.28,.28,3,METAL);ring(2.15,2.74,3.1,.85,.45);
+  }else if(kind==='factory'){
+    // Paired cylindrical silos, an open processing gantry and a low works hall.
+    box(-4,-2.3,0,8,4.6,.18,STONE);
+    pod(-.5,1.1,1.2,7,2);windows(-3.2,-.02,.9,4.4);
+    for(const x of [-2.7,-.2]){ellipsoid(x,-1.2,1.8,1,1,1.8,HULL);ring(x,-1.2,1.8,1.03,.9,METAL);}
+    for(const y of [-2.3,.1])box(2.2,y,.2,.3,.3,3.3,METAL);
+    box(2.1,-2.3,3.5,.5,2.7,.3,HULL);box(1.6,-1.6,.2,2,1.5,.7,DARK);
   }else if(kind==='rail'){
     for(const y of [-.85,.6])box(-7,y,.3,14,.28,.5,HULL);
     for(let i=0;i<7;i++)box(-6+i*2,-1.1,0,.5,2.2,.35,METAL);
@@ -169,19 +175,20 @@ function hull(points){
 function path(c,points){c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();}
 export function drawStructure(c,x,y,size,kind='station',options={}){
   const {normal=null,lit=1,shadow=false}=options,axes=structureFrame(options),mesh=model(kind,options.detail);
-  const groundLight=Math.max(0,dot(axes[2],STRUCTURE_SUN)),direct=normal?groundLight:1;
+  const lightDirection=options.sun?normalize(options.sun):STRUCTURE_SUN,half=normalize(add(lightDirection,[0,0,1]));
+  const groundLight=Math.max(0,dot(axes[2],lightDirection)),direct=normal?groundLight:1;
   c.save();c.translate(x,y);c.scale(size,size);
-  if(shadow&&dot(axes[2],STRUCTURE_SUN)>.06){
-    const points=mesh.flatMap(f=>f.points).map(v=>{const p=projectStructure(v,axes),height=Math.max(0,v[2]);return p.map((q,i)=>q-STRUCTURE_SUN[i]*height/Math.max(.2,groundLight));});
+  if(shadow&&dot(axes[2],lightDirection)>.06){
+    const points=mesh.flatMap(f=>f.points).map(v=>{const p=projectStructure(v,axes),height=Math.max(0,v[2]);return p.map((q,i)=>q-lightDirection[i]*height/Math.max(.2,groundLight));});
     path(c,hull(points));c.fillStyle='#14242535';c.fill();
   }
   const faces=mesh.map(f=>{const n=projectStructure(f.normal,axes);return{...f,n,points:f.points.map(p=>projectStructure(p,axes))};})
     .filter(f=>f.n[2]>.005).sort((a,b)=>a.points.reduce((n,p)=>n+p[2],0)/a.points.length-b.points.reduce((n,p)=>n+p[2],0)/b.points.length);
   for(const f of faces){
-    const sun=Math.max(0,dot(f.n,STRUCTURE_SUN)),nearLight=.43+.18*Math.max(0,f.n[2]);
+    const sun=Math.max(0,dot(f.n,lightDirection)),nearLight=.43+.18*Math.max(0,f.n[2]);
     const light=nearLight+sun*.53*(normal ? .35+Math.min(1,direct*2)*.65 : 1),emission=f.emission*lit;
     const rgb=f.color.map(v=>Math.round(Math.min(255,v*(f.glass?.75+sun*.25:light+emission))));
-    const sheen=f.glass?Math.max(0,dot(f.n,HALF))**20:0;
+    const sheen=f.glass?Math.max(0,dot(f.n,half))**20:0;
     const alpha=f.glass?.085+(1-f.n[2])**3*.34+sheen*.44:f.alpha;
     path(c,f.points);c.fillStyle=`rgba(${rgb.join(',')},${alpha})`;c.fill();
   }c.restore();

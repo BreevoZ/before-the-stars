@@ -1,10 +1,11 @@
+import { drawHabitatLayer } from './habitat-render.js';
 import { surfaceStructure, worldStructureSize } from './structure-models.js';
 import { surfacePoint, spinOf, terrainOffset } from './planet-render.js';
 import { surfaceOf } from './solar-bodies.js';
 import { householdsPerDome, domeCapacity } from './solar-colony.js';
 import { growthStep, ringSegments, upliftedInOrbit, winterSeconds } from './colony-war.js';
 import { drawTransferDescent } from './solar-travel.js';
-import { structure, line, disc, tether, habitatRing, TAU, clamp, smooth } from './celestial-structures.js';
+import { structure, line, disc, TAU, clamp, smooth } from './celestial-structures.js';
 export function marsDevelopment(o){
   const world=o.solar.colonies.mars,step=world.growth?.step??0,current=growthStep(world),p=clamp((world.growth?.progress??0)/(current?.seconds??1));
   return{grand:step>0,survey:step>1,elevator:upliftedInOrbit(world),rings:ringSegments(world),building:world.uplifted.length&&current?.key.startsWith('ring')?Math.max(.02,p):0,
@@ -68,8 +69,7 @@ export function drawOrbitalWorks(c,g,body,o,time,front,{reducedMotion=false}={})
   const orbit=(r,a,tilt=0,flatten=.32)=>{const x=Math.cos(a)*g.r*r,y=Math.sin(a)*g.r*r*flatten;return{x:g.x+x*Math.cos(tilt)-y*Math.sin(tilt),y:g.y+x*Math.sin(tilt)+y*Math.cos(tilt),z:Math.sin(a)};};
   const on=(p,draw)=>{if((p.z>=0)===front)draw(p);};
   if(body.id==='mars'){
-    const d=marsDevelopment(o);habitatRing(c,g,d.rings,d.building,front,time);
-    const p=surfaceSite(body,time,.4,0);if(d.elevator&&(p.z>=0)===front)tether(c,g.x,g.y,g.r,p,{time,reducedMotion});
+    const d=marsDevelopment(o);drawHabitatLayer(c,g,{sections:d.rings,building:d.building,elevator:d.elevator,rotation:-spinOf(body,time),time,reducedMotion,sun:[.88,-.34,.36]},front);
     if(front){const homes=o.solar.colonies.mars.civs,per=householdsPerDome(o),arrivals=[...homes.map((civ,i)=>({i,age:o.elapsed-civ.arrivedAt})),...o.solar.transfers.filter(tr=>tr.to==='mars').map((tr,i)=>({i:homes.length+i,age:o.elapsed-tr.arriveAt+2}))];
       for(const item of arrivals){const dome=Math.floor(item.i/per)%Math.max(1,t.dome),p=surfaceSite(body,time,d.grand?.36:.06+dome*.3,d.grand?.16:.06+(dome%2)*.27);if(p.z>.04)drawTransferDescent(c,g.x+p.x*g.r,g.y+p.y*g.r,g.r*1.05,item.age,{reducedMotion});}}
   }

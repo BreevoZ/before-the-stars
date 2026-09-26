@@ -2,7 +2,7 @@ import { BODIES, SYSTEM, bodyPosition, orbitRadius, bodyById } from './solar-con
 import { ARK_COUNT } from './shipyard-render.js';
 import { FACILITIES, pioneerProgress, flightLeg, arrived, flightTo } from './solar-industry.js';
 import { drawArkLight } from './ark-lights.js';
-import { TAU } from './celestial-clock.js';
+import { TAU, dayPhase } from './celestial-clock.js';
 import { drawStar } from './stellar-render.js';
 import { structure, line, smooth } from './celestial-structures.js';
 import { planetAppearance, marsDevelopment } from './solar-world-effects.js';
@@ -10,7 +10,9 @@ import { arkArc, arkWake, arrivalRing, drawMooredArks, departureDock } from './s
 const noise=n=>{let v=Math.imul(n^(n>>>16),0x21f0aaad);v=Math.imul(v^(v>>>15),0x735a2d97);return((v^(v>>>15))>>>0)/4294967296;};
 const disc=(c,x,y,r,fill)=>{c.beginPath();c.arc(x,y,r,0,TAU);c.fillStyle=fill;c.fill();};
 export { bodyKindLabel, MOON, DESTINATIONS, destination } from './solar-bodies.js';
-import { drawPlanetSphere } from './planet-render.js';
+import { drawHabitatLayer } from './habitat-render.js';
+import { drawLunarSphere } from './lunar-render.js';
+import { drawPlanetSphere, spinOf } from './planet-render.js';
 import { drawBeltScene } from './solar-world-render.js';
 // Display-only eccentric Pluto orbit: simulation periods and windows stay intact.
 export function atlasOrbit(b){const r=orbitRadius(b.au);return{a:b.id==='pluto'?r/1.18:r,e:b.id==='pluto'?.18:0,tilt:b.id==='pluto'?.64:SYSTEM.tilt,rotation:b.id==='pluto'?-.14:0};}
@@ -22,9 +24,11 @@ export function atlasPosition(b,time){
 // this same transform; the catalogue remains usable even when planets overlap.
 export function solarViewport(w,h){const scale=Math.min(w/1000,h/500);return{scale,x:(w-1000*scale)/2,y:(h-500*scale)/2};}
 export function drawSolarBody(c,b,x,y,r,{time=0,sunAngle=-.4,ring=0,o=null,reducedMotion=false}={}){
-  drawPlanetSphere(c,b,x,y,r,{time,sunAngle,appearance:o?planetAppearance(b,o,{reducedMotion}):{}});
-  if(b.id==='mars'&&o)ring=marsDevelopment(o).rings;
-  if(ring){c.save();c.translate(x,y);c.rotate(-.25);c.strokeStyle='#b8c2a79c';c.lineWidth=Math.max(.7,r*.035);c.beginPath();c.ellipse(0,0,r*1.4,r*.35,0,0,Math.PI*2);c.stroke();c.restore();}
+  const mars=b.id==='mars'&&o?marsDevelopment(o):null,g={x,y,r};
+  const habitat={sections:mars?mars.rings:ring,building:mars?.building??0,elevator:mars?mars.elevator:b.id==='earth'&&Boolean(o?.talents.elevator),rotation:b.id==='earth'?-dayPhase(time)*TAU:-spinOf(b,time),time,reducedMotion,sun:[Math.cos(sunAngle),Math.sin(sunAngle),.2]};
+  drawHabitatLayer(c,g,habitat,false);
+  drawPlanetSphere(c,b,x,y,r,{time,sunAngle,reducedMotion,appearance:o?planetAppearance(b,o,{reducedMotion}):{}});
+  drawHabitatLayer(c,g,habitat,true);
 }
 function stars(c,w,h,time){c.fillStyle='#0b141e';c.fillRect(0,0,w,h);const g=c.createRadialGradient(w*.45,h*.47,0,w*.45,h*.47,w*.75);g.addColorStop(0,'#3148532e');g.addColorStop(.5,'#20313a18');g.addColorStop(1,'#101a2600');c.fillStyle=g;c.fillRect(0,0,w,h);
   for(let i=0;i<190;i++){c.globalAlpha=.1+(.5+.5*Math.sin(time*.4+noise(i)*TAU))*.26;disc(c,noise(i+500)*w,noise(i+900)*h,i%13===0?1.1:.55,'#c1d0cb');}c.globalAlpha=1;}
@@ -43,7 +47,7 @@ export function drawSolarSystem(c,w,h,o,{ambientTime=o.elapsed,reducedMotion=fal
     c.save();c.globalAlpha=settled||flying||active?1:.62;drawSolarBody(c,b,p.x,p.y,r,{time:clock,sunAngle:Math.atan2(cy-p.y,cx-p.x),ring:b.id==='earth'?o.talents.recovery:0,o,reducedMotion});c.restore();
     if(active){c.strokeStyle='#d6c596';c.lineWidth=.8;c.beginPath();c.arc(p.x,p.y,r+7,-.3,1.2);c.stroke();c.beginPath();c.arc(p.x,p.y,r+7,Math.PI-.3,Math.PI+1.2);c.stroke();}
     c.textAlign=p.x<cx?'right':'left';const sign=p.x<cx?-1:1;c.fillStyle=active?'#e0d3af':'#a6b8b2';c.font=`${Math.max(active?12:10,(active?10:8)/v.scale)}px system-ui,sans-serif`;if(w>=600||active)c.fillText(b.name,p.x+sign*(r+13),p.y+4);
-    if(b.id==='earth')disc(c,p.x+r*2,p.y-r,2.1,'#b6c4b3');
+    if(b.id==='earth')drawLunarSphere(c,p.x+r*2,p.y-r,2.1,{rotation:clock*.01,sun:[Math.cos(Math.atan2(cy-p.y,cx-p.x)),Math.sin(Math.atan2(cy-p.y,cx-p.x)),.2]});
     if(w>=600){c.fillStyle=settled?'#b9ba91':flying?'#a5bca7':'#657f80';c.font='8px system-ui,sans-serif';c.fillText(b.id==='earth'?'母星 · 月面家园':settled?'驻地已建立':flying?'方舟航行中':'待抵达',p.x+sign*(r+13),p.y+18);}
   }
   if(o.talents.voyage){

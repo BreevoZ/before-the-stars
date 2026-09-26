@@ -168,6 +168,7 @@ const paths = {
   cargo: '<rect x="3" y="9" width="7" height="6" rx="1"/><rect x="14" y="9" width="7" height="6" rx="1"/><path d="M10 12h4M1 12h2M21 12h2"/>',
   rail: '<path d="M3 20 20 3"/><path d="M6 21 21 6" opacity=".5"/><path d="M5 16l3 3M9 12l3 3M13 8l3 3"/><path d="M18 3h3v3"/>',
   academy: '<path d="M2 9l10-5 10 5-10 5z"/><path d="M6 11v5c3 2 9 2 12 0v-5"/><path d="M22 9v6"/>',
+  liftport: '<path d="M6 21h12M12 20V5"/><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M4 6v3M20 6v3"/><rect x="10" y="11" width="4" height="5"/>',
   tether: '<circle cx="12" cy="20" r="2.5"/><path d="M12 17.5V3"/><rect x="9.5" y="7" width="5" height="4" rx="1"/><path d="M8 3h8"/>',
   terraform: '<circle cx="12" cy="12" r="8"/><path d="M5 14c3-2 5 1 8-1s4-2 6-1"/><path d="M4 12a8 8 0 0 1 16 0" opacity=".5" stroke-dasharray="2 2"/>',
   bunker: '<path d="M2 13h20"/><path d="M5 13a7 7 0 0 1 14 0"/><path d="M9 13v7h6v-7"/><path d="M5 20h14" opacity=".6"/>',

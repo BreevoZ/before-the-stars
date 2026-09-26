@@ -1,5 +1,7 @@
-import { tether, structure, line as structureLine } from './celestial-structures.js';
-import { ARK_SITES, arkSite, drawArkLight } from './ark-lights.js';
+import { drawStructure, surfaceStructure, worldStructureSize } from './structure-models.js';
+import { drawHabitatLayer, habitatPoint } from './habitat-render.js';
+import { drawLunarSphere, lunarSurfacePoint } from './lunar-render.js';
+import { ARK_SITES, drawArkLight } from './ark-lights.js';
 import { drawOrbitalScene, ORBITAL_SECONDS } from './orbital-scene.js';
 import { SITES, ORBITAL_RULES as R } from './orbital-config.js';
 import { dayPhase, TAU, siteLongitude, lunarOrbitAngle } from './celestial-clock.js';
@@ -138,44 +140,6 @@ export function drawEarthSphere(ctx,x,y,r,{time=0,reducedMotion=false}={}){
 export function habitatSegments(rank){
   return Array.from({length:Math.min(R.habitatSections,Math.max(0,rank))},(_,i)=>({start:i*TAU/R.habitatSections,end:(i+1)*TAU/R.habitatSections}));
 }
-// The habitat is a thin band that hugs the equator, not a Saturn-scale rail. It
-// is lit from the same sun as the globe: a bright rim on the day side, window
-// lights on the night side, and a dark silhouette where it crosses the planet.
-const RING=Object.freeze({rx:1.13,ry:.19,tilt:-.1,width:.026});
-function habitat(ctx,cx,cy,r,rank,front,{time=0,construction=1,reducedMotion=false}={}){
-  ctx.save();ctx.translate(cx,cy);ctx.rotate(RING.tilt);
-  const rx=r*RING.rx,ry=r*RING.ry,band=Math.max(1.6,r*RING.width),spin=reducedMotion?0:time*TAU/900;
-  const faces=t=>(Math.sin(t)>=0)===front,depth=front?1:.62,point=t=>[Math.cos(t)*rx,Math.sin(t)*ry];
-  function arc(a,b,width,color,alpha=1){
-    ctx.strokeStyle=color;ctx.lineWidth=width;ctx.globalAlpha=alpha*depth;ctx.lineCap='round';
-    let run=[];const flush=()=>{if(run.length>1){path(ctx,run);ctx.stroke();}run=[];};
-    for(let t=a;t<=b+1e-9;t+=Math.min(.02,b-a||.02)){if(faces(t))run.push(point(t));else flush();if(t===b)break;}
-    if(faces(b))run.push(point(b));flush();ctx.globalAlpha=1;
-  }
-  // The surveyed orbit shows where the remaining sections will go.
-  ctx.setLineDash([1.5,5]);arc(0,TAU,.7,'#a9c2ad',.2);ctx.setLineDash([]);
-  const segments=habitatSegments(rank);let builtEnd=spin;
-  for(const [i,segment]of segments.entries()){
-    const a=segment.start+spin,b=a+(segment.end-segment.start)*(i===rank-1?construction:1);builtEnd=b;
-    if(front)arc(a,b,band+2.6,'#081315',.85);
-    arc(a,b,band,'#58726a');
-    // Sunlit rim and night-side windows, sampled along the section.
-    for(let t=a;t<b;t+=.024){if(!faces(t))continue;const[x,y]=point(t),sun=Math.cos(t+RING.tilt);
-      if(sun>-.15){const[nx,ny]=point(Math.min(b,t+.026));ctx.globalAlpha=clamp(sun*.75+.25)*.75*depth;ctx.strokeStyle='#dfe3c6';ctx.lineWidth=Math.max(.7,band*.3);
-        path(ctx,[[x,y-band*.3],[nx,ny-band*.3]]);ctx.stroke();}
-      else if(Math.floor(t/.024)%2===0){ctx.globalAlpha=clamp(-sun*1.4)*.85*depth;disc(ctx,x,y,Math.max(.55,band*.16),'#e4cf8e');}
-    }ctx.globalAlpha=1;
-    // Docking hubs at the joints make each purchased section readable.
-    for(const t of [a,b])if(faces(t)){const[x,y]=point(t);ctx.globalAlpha=depth;disc(ctx,x,y,band*.95,'#1a2c2b');disc(ctx,x,y,band*.62,'#9db3a3');disc(ctx,x,y,band*.24,'#e2d7a6');ctx.globalAlpha=1;}
-  }
-  if(rank&&construction<1&&faces(builtEnd)){
-    const[x,y]=point(builtEnd);ctx.setLineDash([1,3]);arc(builtEnd,builtEnd+.16,band*.5,'#d9cf9d',.45);ctx.setLineDash([]);
-    const glow=ctx.createRadialGradient(x,y,0,x,y,band*3.2);glow.addColorStop(0,'#f2e3aa'+'cc');glow.addColorStop(1,'#f2e3aa00');disc(ctx,x,y,band*3.2,glow);
-  }
-  // Two shuttles run along the finished length.
-  if(rank){const length=builtEnd-spin;for(let k=0;k<2;k++){const t=spin+length*(reducedMotion?.3+k*.4:((time*.02+k*.5)%1));if(faces(t)){const[x,y]=point(t);ctx.globalAlpha=depth;disc(ctx,x,y,band*.9,'#dfe6cc40');disc(ctx,x,y,band*.35,'#f1ecd0');ctx.globalAlpha=1;}}}
-  ctx.restore();
-}
 // The moon orbits the Earth on a wider, slightly steeper plane than the ring:
 // it passes in front of the planet, then behind it, over one orbital period.
 // The orbit angle is shared with every battlefield sky, so the phase seen from
@@ -186,8 +150,8 @@ export function moonPosition(time,{cx=500,cy=322,r=238}={}){
   const a=lunarOrbitAngle(time),x=Math.cos(a)*r*MOON.rx,y=Math.sin(a)*r*MOON.ry,c=Math.cos(MOON.tilt),s=Math.sin(MOON.tilt),depth=Math.sin(a);
   return{x:cx+x*c-y*s,y:cy+x*s+y*c,depth,angle:a,m:r*MOON.size*(1+depth*.14)};
 }
-// Where cargo docks: the point of the ring on the moon's side of the planet.
-function ringDock(a,cx,cy,r){const x=Math.cos(a)*r*RING.rx,y=Math.sin(a)*r*RING.ry,c=Math.cos(RING.tilt),s=Math.sin(RING.tilt);return[cx+x*c-y*s,cy+x*s+y*c];}
+// Lunar traffic returns to the same physical collar as the Earth elevator.
+function ringDock(time,cx,cy,r){const p=habitatPoint(0,{rotation:-dayPhase(time)*TAU});return[cx+p.x*r,cy+p.y*r];}
 function moonOrbitPath(ctx,cx,cy,r,front){
   ctx.save();ctx.translate(cx,cy);ctx.rotate(MOON.tilt);ctx.setLineDash([1.5,7]);ctx.strokeStyle='#b8c3aa';ctx.lineWidth=.7;ctx.globalAlpha=front?.22:.12;
   ctx.beginPath();ctx.ellipse(0,0,r*MOON.rx,r*MOON.ry,0,front?0:Math.PI,front?Math.PI:TAU);ctx.stroke();ctx.restore();
@@ -196,30 +160,10 @@ function moonOrbitPath(ctx,cx,cy,r,front){
 // cargo stream share that layer, so the globe hides them on the far side.
 function lunarSystem(ctx,o,moon,cx,cy,r,{ambient,reducedMotion}){
   const{x,y,m}=moon;
-  // Seen from space, the moon is lit exactly like the planet: the sun is to the
-  // right, so its right half is day. It is tidally locked: the near side keeps
-  // facing the planet, so its features turn across the disc as it orbits.
-  disc(ctx,x,y,m,'#8f9e8f');
-  ctx.save();ctx.beginPath();ctx.arc(x,y,m,0,TAU);ctx.clip();
-  const facing=moon.angle+Math.PI,feature=(lon,lat)=>{const a=facing+lon,c=Math.cos(lat);return{x:Math.cos(a)*c,y:-Math.sin(lat),z:Math.sin(a)*c};};
-  // Maria only on the near side, as on the real moon: they gather on the limb
-  // that faces the planet and vanish when the far side turns toward us.
-  for(let i=0;i<8;i++){const p=feature((noise(i+310)*2-1)*.85,(noise(i+330)*2-1)*.6);if(p.z<=0)continue;
-    const px=x+p.x*m,py=y+p.y*m,pr=m*(.2+noise(i+350)*.2)*(.3+p.z*.7),mare=ctx.createRadialGradient(px,py,0,px,py,pr);
-    mare.addColorStop(0,'#58695f8c');mare.addColorStop(.7,'#58695f55');mare.addColorStop(1,'#58695f00');disc(ctx,px,py,pr,mare);}
-  // A few bright rayed craters mark the far side instead.
-  for(let i=0;i<3;i++){const p=feature(Math.PI+(noise(i+370)*2-1)*.8,(noise(i+380)*2-1)*.6);if(p.z<=0)continue;ctx.globalAlpha=.55*p.z;disc(ctx,x+p.x*m,y+p.y*m,m*.07,'#dfe3cf');ctx.globalAlpha=1;}
-  const outpost=feature(.22,-.12);
-  ctx.drawImage(terminator(ctx,0),x-m,y-m,m*2,m*2);
-  // Base lights on the near side, only once it has turned into night.
-  if(o.talents.outpost&&outpost.z>0&&outpost.x<.05){const level=o.talents.lunarIndustry;
-    for(let i=0;i<3+level*2;i++){ctx.globalAlpha=clamp(.05-outpost.x)*(.5+noise(i+77)*.5);disc(ctx,x+outpost.x*m+(noise(i+5)-.5)*m*.35*outpost.z,y+outpost.y*m+(noise(i+9)-.5)*m*.3,.7,'#e5d192');}ctx.globalAlpha=1;}
-  if(!o.talents.voyage)for(const [i,f]of ARK_SITES.entries()){
-    if(i>=o.talents.shipyard)break;const p=feature(f.longitude,f.latitude);if(p.z<=0)continue;
-    drawArkLight(ctx,x+p.x*m,y+p.y*m,{radius:.6,glow:2.7,brightness:.8});
-  }
-  ctx.restore();ctx.strokeStyle='#b3c0aa45';ctx.lineWidth=.6;ctx.beginPath();ctx.arc(x,y,m,0,TAU);ctx.stroke();
-  const dock=ringDock(moon.angle,cx,cy,r),len=Math.hypot(dock[0]-x,dock[1]-y)||1,sx=x+(dock[0]-x)/len*m*.95,sy=y+(dock[1]-y)/len*m*.95;
+  const rotation=-moon.angle-Math.PI/2,sun=[1,0,0];
+  drawLunarSphere(ctx,x,y,m,{rotation,sun});
+  if(o.talents.outpost)drawLunarWorks(ctx,{x,y,r:m},o,rotation,sun,{time:ambient,reducedMotion,miniature:true});
+  const dock=ringDock(reducedMotion?0:o.elapsed,cx,cy,r),len=Math.hypot(dock[0]-x,dock[1]-y)||1,sx=x+(dock[0]-x)/len*m*.95,sy=y+(dock[1]-y)/len*m*.95;
   // A gentle arc from the moon's limb, bowed away from the planet's centre.
   const dx=dock[0]-sx,dy=dock[1]-sy,nx=-dy/len,ny=dx/len,bow=len*.16*(nx*(sx-cx)+ny*(sy-cy)>0?1:-1);
   const at=t=>{const u=1-t;return[u*u*sx+2*u*t*((sx+dock[0])/2+nx*bow)+t*t*dock[0],u*u*sy+2*u*t*((sy+dock[1])/2+ny*bow)+t*t*dock[1]];};
@@ -250,8 +194,8 @@ export function drawOrbitalColony(ctx,width,height,o,{reducedMotion=false,ambien
   const time=reducedMotion?0:o.elapsed;
   const moon=o.talents.transit?moonPosition(time):null,system={ambient:ambientTime,reducedMotion};
   if(moon){moonOrbitPath(ctx,500,322,238,false);if(moon.depth<0)lunarSystem(ctx,o,moon,500,322,238,system);}
-  habitat(ctx,500,322,238,o.talents.recovery,false,{time,construction,reducedMotion});globe(ctx,500,322,238,o,{time,reducedMotion});habitat(ctx,500,322,238,o.talents.recovery,true,{time,construction,reducedMotion});
-  if(o.solar?.talents.spaceElevator)tether(ctx,500,322,238,sphere(.4,0,dayPhase(time)*TAU),{time,reducedMotion});
+  const ring={sections:o.talents.recovery-(o.talents.recovery&&construction<1?1:0),building:o.talents.recovery&&construction<1?construction:0,elevator:Boolean(o.talents.elevator),rotation:-dayPhase(time)*TAU,time:ambientTime,reducedMotion,expanded:Boolean(o.solar?.talents.spaceElevator)},earth={x:500,y:322,r:238};
+  drawHabitatLayer(ctx,earth,ring,false);globe(ctx,500,322,238,o,{time,reducedMotion});drawHabitatLayer(ctx,earth,ring,true);
   if(moon){moonOrbitPath(ctx,500,322,238,true);if(moon.depth>=0)lunarSystem(ctx,o,moon,500,322,238,system);}
   for(const w of o.wars){const points=w.participants.map(id=>sitePosition(SITES.find(s=>s.id===o.civilizations.find(c=>c.id===id).site),time));if(!points.every(p=>p.visible))continue;
     const[a,b]=points;ctx.strokeStyle=C.war;ctx.lineWidth=1;ctx.setLineDash([3,6]);ctx.lineDashOffset=reducedMotion?0:-ambientTime*3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo((a.x+b.x)/2,(a.y+b.y)/2-45,b.x,b.y);ctx.stroke();ctx.setLineDash([]);
@@ -264,92 +208,51 @@ export function drawOrbitalColony(ctx,width,height,o,{reducedMotion=false,ambien
 // No planet spin, star animation or simulation clock behind the talent tree.
 export function drawOrbitalTalentSky(ctx,width,height){drawOrbitalScene(ctx,width,height,ORBITAL_SECONDS);}
 
-// The base grows outward from one landing site. Positions are fixed on the
-// surface: the moon is tidally locked, so the sun, not the ground, moves.
+// Colony sites are fixed in lunar longitude/latitude. Terrain, roads, facilities
+// and launch pads rotate together; the light follows the shared lunar clock.
 export function lunarFacilities(level){
   return Array.from({length:3+level*2},(_,i)=>{const angle=i*2.39996,spread=i?.1+.085*Math.sqrt(i):0;
     return{longitude:.22+Math.cos(angle)*spread,latitude:-.12+Math.sin(angle)*spread*.8,kind:i%3===0?'hub':i%3===1?'array':'factory'};});
 }
 export function lunarRotation(time){return dayPhase(time*120/R.lunarRotationSeconds)*TAU;}
-// The close-up is the moon as seen from the planet, so it shows the same phase
-// as every battlefield sky: full when the orbit angle is π, new at 0. The night
-// mask never goes fully black, so a new moon still shows the base's lights.
 const lunarSun=(time,reduced)=>reduced?.78:lunarOrbitAngle(time)-Math.PI/2;
-const lunarDark=(p,sun)=>clamp(.5-(p.x*Math.cos(sun)+p.z*Math.sin(sun))*2.8);
-function surfacePatch(ctx,cx,cy,r,p,draw){
-  ctx.save();ctx.translate(cx+p.x*r,cy+p.y*r);ctx.rotate(Math.atan2(p.y,p.x));ctx.scale(Math.max(.14,p.z),1);draw();ctx.restore();
+function lunarRoad(ctx,g,a,b,rotation){
+  let active=false;ctx.beginPath();
+  for(let i=0;i<=16;i++){const t=i/16,p=lunarSurfacePoint(a.longitude+(b.longitude-a.longitude)*t,a.latitude+(b.latitude-a.latitude)*t,rotation);
+    if(p.z<=.01){active=false;continue;}const x=g.x+p.x*g.r,y=g.y+p.y*g.r;if(active)ctx.lineTo(x,y);else ctx.moveTo(x,y);active=true;}
+  ctx.strokeStyle='#afb7a245';ctx.lineWidth=Math.max(.45,g.r*.0022);ctx.stroke();
+}
+function drawLunarWorks(ctx,g,o,rotation,sun,{time=0,reducedMotion=false,miniature=false}={}){
+  const level=o.talents.lunarIndustry,sites=lunarFacilities(level),size=worldStructureSize(g.r,miniature?.014:.015),at=(lon,lat)=>lunarSurfacePoint(lon,lat,rotation);
+  const all=sites.map(f=>({...f,p:at(f.longitude,f.latitude)}));
+  if(!miniature)for(let i=1;i<sites.length;i++)lunarRoad(ctx,g,sites[i],sites[Math.floor((i-1)/2)],rotation);
+  for(const f of all.sort((a,b)=>a.p.z-b.p.z))surfaceStructure(ctx,g,f.p,size,f.kind==='hub'?'outpost':f.kind,{sun,angle:f.longitude*.7});
+  if(!o.talents.voyage)for(let i=0;i<o.talents.shipyard;i++){
+    const f=ARK_SITES[i],p=at(f.longitude,f.latitude);if(p.z<=.02)continue;
+    drawArkLight(ctx,g.x+p.x*g.r,g.y+p.y*g.r,{radius:miniature?.5:Math.max(.7,g.r*.0045),glow:miniature?2:Math.max(3,g.r*.019),brightness:Math.min(1,p.z*5)});
+  }
+  if(!o.talents.massDriver&&!miniature){const hub=at(sites[0].longitude,sites[0].latitude);
+    if(hub.z>.05)for(let i=0;i<2;i++){const t=reducedMotion?.23+i*.28:(time/(6/(1+level))+i*.5)%1,lift=t*t*.45;
+      ctx.save();ctx.globalAlpha=(1-t)*.85;drawStructure(ctx,g.x+(hub.x*(1+lift)-lift*.18)*g.r,g.y+(hub.y*(1+lift)-lift)*g.r,size*.23,'tug',{sun,yaw:-.5,pitch:.6});ctx.restore();}
+  }
+  // Both electromagnetic launchers are 3D rails anchored to the terrain. The
+  // capsule follows the rail's tangent before climbing out of the gravity well.
+  const rails=[];
+  if(o.talents.massDriver)rails.push({longitude:-.3,latitude:.02,angle:-.55});
+  if(o.solar?.talents.launchRail)rails.push({longitude:.1,latitude:-.56,angle:.35});
+  for(const f of rails){const p=at(f.longitude,f.latitude);surfaceStructure(ctx,g,p,size*1.1,'rail',{sun,angle:f.angle});
+    if(p.z<=.05||miniature||reducedMotion)continue;
+    const t=(time*(.22+level*.025))%1,tail=Math.max(0,t-.018),end=at(f.longitude-.6*Math.cos(f.angle),f.latitude+.6*Math.sin(f.angle));
+    const fly=u=>({x:g.x+(p.x+(end.x-p.x)*u+p.x*u*u*.6)*g.r,y:g.y+(p.y+(end.y-p.y)*u+p.y*u*u*.6)*g.r});
+    const a=fly(t),b=fly(tail);ctx.save();ctx.globalAlpha=(1-t)*.65;ctx.strokeStyle='#d9d8af';ctx.lineWidth=.8;path(ctx,[[b.x,b.y],[a.x,a.y]]);ctx.stroke();
+    drawStructure(ctx,a.x,a.y,size*.17,'tug',{angle:Math.atan2(a.y-b.y,a.x-b.x),sun});ctx.restore();
+  }
 }
 export function drawLunarColony(ctx,width,height,o,{ambientTime=o.elapsed,reducedMotion=false}={}){
   ctx.save();drawOrbitStars(ctx,width,height,ambientTime,reducedMotion);
   const mobile=width<620,r=mobile?Math.min(width*.35,height*.28):Math.min(height*.40,width*.21),cx=width*(mobile?.53:.76),cy=height*(mobile?.70:.51);
-  const sun=lunarSun(o.elapsed,reducedMotion),level=o.talents.lunarIndustry,site=(lon,lat)=>sphere(lon,lat,0);
-  const halo=ctx.createRadialGradient(cx,cy,r*.98,cx,cy,r*1.07);halo.addColorStop(0,'#8ea89821');halo.addColorStop(1,'#8ea89800');disc(ctx,cx,cy,r*1.07,halo);
-  const g=ctx.createRadialGradient(cx-r*.25,cy-r*.3,r*.1,cx,cy,r);g.addColorStop(0,'#a9b3a1');g.addColorStop(.7,'#7f8f83');g.addColorStop(1,'#56675f');disc(ctx,cx,cy,r,g);
-  ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,TAU);ctx.clip();
-  // Dark maria first, then craters with a shadowed floor and a sunward rim.
-  for(let i=0;i<6;i++)for(let k=0;k<3;k++){const p=site((noise(i+401)*2-1)*1.2+(noise(i*5+k)-.5)*.35,(noise(i+433)*2-1)*.85+(noise(i*7+k+50)-.5)*.3);if(p.z<=0)continue;
-    const mr=r*(.09+noise(i*3+k+457)*.12);surfacePatch(ctx,cx,cy,r,p,()=>{const soft=ctx.createRadialGradient(0,0,0,0,0,mr);soft.addColorStop(0,'#3a4c4633');soft.addColorStop(.7,'#3a4c4626');soft.addColorStop(1,'#3a4c4600');disc(ctx,0,0,mr,soft);});}
-  for(let i=0;i<70;i++){const p=site((noise(i+17)*2-1)*1.5,(noise(i+222)*2-1)*1.35);if(p.z<=.02)continue;const cr=(.01+noise(i+903)**3*.055)*r;
-    surfacePatch(ctx,cx,cy,r,p,()=>{const floor=ctx.createRadialGradient(-cr*.2,0,0,0,0,cr);floor.addColorStop(0,'#2b3c3848');floor.addColorStop(1,'#2b3c3810');disc(ctx,0,0,cr,floor);
-      ctx.strokeStyle='#e2e6d044';ctx.lineWidth=Math.max(.6,r*.004);ctx.beginPath();ctx.arc(0,0,cr,-.9,.9);ctx.stroke();});}
-  // Industry reads from orbit as ground marks: mining scars, reflective solar
-  // fields and roads between sites. Buildings are too small to see from here.
-  const sites=lunarFacilities(level).map(f=>({...f,p:site(f.longitude,f.latitude)})),s=r*.05;
-  ctx.strokeStyle='#cfd2bb';ctx.lineWidth=.7;
-  for(let i=1;i<sites.length;i++){const a=sites[i].p,b=sites[Math.floor((i-1)/2)].p;if(a.z<=0||b.z<=0)continue;ctx.globalAlpha=.2;path(ctx,[[cx+a.x*r,cy+a.y*r],[cx+b.x*r,cy+b.y*r]]);ctx.stroke();}
-  ctx.globalAlpha=1;
-  for(const [i,f]of sites.entries()){if(f.p.z<=0)continue;const lit=1-lunarDark(f.p,sun);surfacePatch(ctx,cx,cy,r,f.p,()=>{
-    if(f.kind==='array'){ // reflective panel rows; they glint in sunlight
-      ctx.fillStyle='#a9c0c2';for(let row=0;row<3;row++)for(let col=0;col<4;col++){ctx.globalAlpha=.25+lit*.45;ctx.fillRect(-s*.95+col*s*.5+row*s*.12,-s*.5+row*s*.36,s*.4,s*.24);}}
-    else if(f.kind==='factory'){ // a pale mining scar of overlapping regolith blobs
-      for(let k=0;k<4;k++){const bx=(noise(i*9+k)-.5)*s*1.6,by=(noise(i*11+k+3)-.5)*s,br=s*(.45+noise(i*13+k)*.5);
-        const scar=ctx.createRadialGradient(bx,by,0,bx,by,br);scar.addColorStop(0,'#d6d6c066');scar.addColorStop(1,'#d6d6c000');disc(ctx,bx,by,br,scar);}
-      ctx.strokeStyle='#2f3d3999';ctx.lineWidth=.8;path(ctx,[[-s*.5,s*.1],[s*.1,-s*.15],[s*.55,.0]]);ctx.stroke();}
-    else{ // a hub: a few small building footprints, no outline
-      for(let k=0;k<5;k++){ctx.globalAlpha=.7;ctx.fillStyle=k%2?'#c7ccb7':'#aab4a2';const w=s*(.22+noise(i+k*17)*.25),h=s*(.16+noise(i+k*23)*.18);
-        ctx.fillRect((noise(i+k*31)-.5)*s*1.1-w/2,(noise(i+k*37)-.5)*s*.8-h/2,w,h);}}
-    ctx.globalAlpha=1;});}
-  ctx.drawImage(terminator(ctx,sun),cx-r,cy-r,r*2,r*2);
-  // City lights come up where the base has fallen into night.
-  for(const f of sites){if(f.p.z<=0)continue;const dark=lunarDark(f.p,sun);if(dark<.05)continue;const n=f.kind==='hub'?10:f.kind==='factory'?6:3;
-    for(let k=0;k<n;k++){const x=cx+f.p.x*r+(noise(k*13+f.longitude*977|0)-.5)*s*2.4*f.p.z,y=cy+f.p.y*r+(noise(k*29+f.latitude*613|0)-.5)*s*1.8;
-      ctx.globalAlpha=dark*.18;disc(ctx,x,y,2.6,'#e8cf8a');ctx.globalAlpha=dark*(.6+noise(k+3)*.4);disc(ctx,x,y,.8,'#f2dea0');}}
-  ctx.globalAlpha=1;
-  if(!o.talents.voyage)for(let i=0;i<o.talents.shipyard;i++){
-    const p=arkSite(i);drawArkLight(ctx,cx+p.x*r,cy+p.y*r,{radius:Math.max(.8,Math.min(1.3,r*.008)),glow:Math.max(4,r*.035)});
-  }
-  ctx.globalAlpha=1;ctx.restore();
-  ctx.strokeStyle='#acbca455';ctx.lineWidth=.8;ctx.beginPath();ctx.arc(cx,cy,r,0,TAU);ctx.stroke();
-  // Transport off the moon. Before the mass driver, shuttles lift off a pad at
-  // the first site; after it, an electromagnetic rail flings a steady stream of
-  // capsules that accelerate along the coils and leave on long trails.
-  const hub=sites[0].p,hx=cx+hub.x*r,hy=cy+hub.y*r,dir=[-.82,-.57],track=r*.42,tx=hx+dir[0]*track,ty=hy+dir[1]*track;
-  if(!o.talents.massDriver){
-    ctx.strokeStyle='#d9d2a6';ctx.globalAlpha=.5;ctx.lineWidth=.8;ctx.beginPath();ctx.arc(hx,hy,r*.035,0,TAU);ctx.stroke();ctx.globalAlpha=1;
-    const interval=6/(1+level);
-    for(let k=0;k<2;k++){const t=reducedMotion?.3+k*.3:((ambientTime/interval)+k/2)%1,rise=t*t*r*.9,x=hx+dir[0]*rise*.35,y=hy-rise;
-      ctx.globalAlpha=Math.max(0,1-t)*.9;ctx.strokeStyle='#e9c98a';ctx.lineWidth=1.2;path(ctx,[[x,y],[x-dir[0]*2,y+6+t*10]]);ctx.stroke();disc(ctx,x,y,1.6,'#f6ebc2');}
-    ctx.globalAlpha=1;
-  }else{
-    const nx=-dir[1],ny=dir[0],rail=(off,alpha)=>{ctx.globalAlpha=alpha;path(ctx,[[hx+nx*off,hy+ny*off],[tx+nx*off,ty+ny*off]]);ctx.stroke();};
-    ctx.strokeStyle='#e3d7a4';ctx.lineWidth=.9;rail(-2.2,.7);rail(2.2,.7);
-    // Coils along the rail brighten as a capsule passes them.
-    const interval=1.6/(1+level*.5),phase=reducedMotion?.4:(ambientTime/interval)%1;
-    for(let i=0;i<=10;i++){const u=i/10,x=hx+dir[0]*track*u,y=hy+dir[1]*track*u,near=Math.max(0,1-Math.abs(u-phase**2)*6);
-      ctx.globalAlpha=.35+near*.65;ctx.strokeStyle=near>.2?'#f6e6b0':'#b9b48f';ctx.lineWidth=1;path(ctx,[[x+nx*4,y+ny*4],[x-nx*4,y-ny*4]]);ctx.stroke();}
-    const glow=ctx.createRadialGradient(tx,ty,0,tx,ty,r*.12);glow.addColorStop(0,'#f5e6b0'+(phase>.85?'aa':'30'));glow.addColorStop(1,'#f5e6b000');ctx.globalAlpha=1;disc(ctx,tx,ty,r*.12,glow);
-    for(let k=0;k<6;k++){const t=reducedMotion?.15+k*.14:((ambientTime/interval)+k/6)%1;
-      // Accelerating on the rail for the first third, then coasting outward.
-      const d=t<.33?(t/.33)**2:1+(t-.33)/.67*2.6,x=hx+dir[0]*track*d,y=hy+dir[1]*track*d,tail=Math.min(d,.25+d*.18);
-      const qx=hx+dir[0]*track*(d-tail),qy=hy+dir[1]*track*(d-tail),fade=t<.33?1:Math.max(0,1-(t-.33)/.67);
-      const trail=ctx.createLinearGradient(qx,qy,x,y);trail.addColorStop(0,'#f1dfa000');trail.addColorStop(1,'#f7e9bb');
-      ctx.globalAlpha=fade;ctx.strokeStyle=trail;ctx.lineWidth=1.6;path(ctx,[[qx,qy],[x,y]]);ctx.stroke();disc(ctx,x,y,1.8,'#fff6d6');}
-    ctx.globalAlpha=1;
-  }
-  if(o.solar?.talents.launchRail){
-    const x=cx-r*.12,y=cy+r*.46,len=r*.34;structureLine(ctx,[[x,y],[x-len,y-len*.18]],'#bdcbb493',.8);structureLine(ctx,[[x,y+2],[x-len,y-len*.18+2]],'#bdcbb455',.6);
-    for(let i=0;i<8;i++){const k=i/7;structureLine(ctx,[[x-k*len,y-k*len*.18-2],[x-k*len,y-k*len*.18+4]],'#b5bda270',.6);}
-    const p=reducedMotion?.5:(ambientTime*.5)%1;structure(ctx,x-p*len,y-p*len*.18,.45,'tug',{angle:Math.PI+.18});
-  }
-  ctx.fillStyle='#9baf9e';ctx.font='9px ui-monospace, monospace';ctx.textAlign='center';ctx.fillText(`LUNA  /  ${String(sites.length).padStart(2,'0')} FACILITIES  /  ${o.talents.shipyard} ARKS${o.talents.voyage?' DEPARTED':''}`,cx,cy+r+25);ctx.restore();
+  const rotation=reducedMotion?0:lunarRotation(o.elapsed),angle=lunarSun(o.elapsed,reducedMotion),sun=[Math.cos(angle),-.12,Math.sin(angle)];
+  drawLunarSphere(ctx,cx,cy,r,{rotation,sun});
+  if(o.talents.outpost)drawLunarWorks(ctx,{x:cx,y:cy,r},o,rotation,sun,{time:ambientTime,reducedMotion});
+  ctx.fillStyle='#9baf9e';ctx.font='9px ui-monospace, monospace';ctx.textAlign='center';ctx.fillText(`LUNA  /  ${String(lunarFacilities(o.talents.lunarIndustry).length).padStart(2,'0')} FACILITIES  /  ${o.talents.shipyard} ARKS${o.talents.voyage?' DEPARTED':''}`,cx,cy+r+25);ctx.restore();
 }

@@ -1,5 +1,5 @@
 // Orbital wars reuse the surface simulation; Legacy is the only orbital wallet.
-export const ORBITAL_RULES = Object.freeze({ version: 20, finalAge: 5, historyLimit: 12,
+export const ORBITAL_RULES = Object.freeze({ version: 21, finalAge: 5, historyLimit: 12,
   winterSeconds: 60, refugeeSeconds: 30, nuclearVisualSeconds: 7, minCivilizations: 4, maxCivilizations: 8, maxWars: 4,
   habitatSections: 7, arkCount: 7, lunarRotationSeconds: 180, lunarBaseIncome: 512, warIncome: 2.5, warBaseHealth: 3,
   // A civilization should take minutes, not one, to climb from I to V: each
@@ -47,7 +47,8 @@ export const ORBITAL_TALENTS = Object.freeze({
   fallout: talent('余烬观测',[65536],{chain:1},'核冬天期间持续收获遗产，整个冬天共计上一次核毁灭遗产的一半。',300,455,'embers',{branch:'life'}),
   doomsday: talent('末日时钟',[262144],{chain:1},'显示本轮已持续的时间；一轮在十分钟内走向核毁灭，遗产最多翻倍。',450,455,'clock',{branch:'life'}),
   // HOME · 地月家园: the mainline, in the order goods actually travel.
-  recovery: talent('环地球生存空间',[256,1024,4096,16384,65536,262144,1048576],{protocol:1},'每级建成七分之一居住环，战争与核毁灭遗产翻倍。第七段接合后，星环完整环绕地球。',660,935,'habitat',{branch:'home'}),
+  elevator: talent('太空电梯',[128],{protocol:1},'从地表建立升降缆与轨道枢纽，为环地球家园输送材料。居住环从枢纽开始逐段扩建。',660,1040,'liftport',{branch:'home'}),
+  recovery: talent('环地球生存空间',[256,1024,4096,16384,65536,262144,1048576],{elevator:1},'每级建成七分之一居住环，战争与核毁灭遗产翻倍。第七段接合后，星环完整环绕地球。',660,935,'habitat',{branch:'home'}),
   // The route comes first: nothing mined on the moon reaches Earth without it.
   transit: talent('地月航线',[32768],{recovery:2},'贯通地月运输航线。只有打通航线，月面的产出才能运回地球。',660,775,'route',{cycles:2,branch:'home'}),
   outpost: talent('月球前哨',[65536],{transit:1},'建立 VI 月面生产基地，货运舱沿地月航线运回遗产；战争与核毁灭遗产再翻倍。',660,615,'moon',{branch:'home',kind:'keystone'}),

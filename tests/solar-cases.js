@@ -183,7 +183,7 @@ export function registerSolarTests(test, assert, near) {
     const produced=o.solar.produced;run(4);const base=Q.toNumber(Q.sub(o.solar.produced,produced));
     assert(purchaseSolarTalent(s,'coldArchive'));const again=o.solar.produced;run(4);near(Q.toNumber(Q.sub(o.solar.produced,again))/base,1.15,.05);
     assert(buildSolarViewModel(s,{view:'pluto'})['#colony-body-kind'].includes('矮行星')&&buildSolarViewModel(s,{view:'charon'})['#solar-body-note'].includes('冰氮前哨 ×2'));
-    const old=JSON.parse(serializeSession(s));old.version=31;old.orbital.version=17;delete old.orbital.solar.colonies.mars.growth;delete old.orbital.solar.facilities.pluto;
+    const old=JSON.parse(serializeSession(s));delete old.orbital.talents.elevator;delete old.orbital.payments.elevator;old.version=31;old.orbital.version=17;delete old.orbital.solar.colonies.mars.growth;delete old.orbital.solar.facilities.pluto;
     for(const k of Object.keys(old.orbital.solar.talents))if(!V31_SOLAR_KEYS.includes(k)){delete old.orbital.solar.talents[k];delete old.orbital.solar.payments[k];}delete old.orbital.solar.payments.pluto;
     const next=parseSession(JSON.stringify(old)).orbital.solar;assert(next.facilities.pluto===0&&next.talents.charon===0,'v31 saves gain an unbuilt Pluto');
   });
@@ -224,7 +224,7 @@ export function registerSolarTests(test, assert, near) {
     assert(n.facilities.neptune===0&&serializeSession(parseSession(serializeSession(next)))===serializeSession(next));
   });
   test('Industry v25–v27: older saves gain empty ledgers and new talents; VI saves never own footholds', () => {
-    const s=voyageFixture(),old=JSON.parse(serializeSession(s));old.version=24;old.orbital.version=10;delete old.orbital.solar;
+    const s=voyageFixture(),old=JSON.parse(serializeSession(s));delete old.orbital.talents.elevator;delete old.orbital.payments.elevator;old.version=24;old.orbital.version=10;delete old.orbital.solar;
     const next=parseSession(JSON.stringify(old));assert(Object.values(next.orbital.solar.facilities).every(v=>v===0)&&Q.eq(next.orbital.solar.produced,0));
     assert(next.orbital.solar.flights.length===0&&next.orbital.solar.talents.harbor===0);
     setDebugLegacy(s,2**40);const v26=toV29(JSON.parse(serializeSession(s)));v26.version=26;v26.orbital.version=12;delete v26.orbital.solar.flights;v26.orbital.solar.colonies={mars:[]};for(const k of ['heat','harbor','nuclear','fusion','uplift'])delete v26.orbital.solar.talents[k];

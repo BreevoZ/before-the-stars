@@ -13,6 +13,11 @@ import { mountFixture } from './progression-cases.js';
 // A current record written back into v29's shape (the map before it was rebuilt by world).
 export function toV29(record) {
   const sol = record.orbital.solar, keys = ['heat', 'harbor', 'nuclear', 'fusion', 'dome', 'transfer', 'uplift', 'survey', 'hohmann', 'fleet', 'fuel'];
+  // This synthetic pre-elevator debug fixture keeps its requested wallet:
+  // remove both the new purchase and the debug funding that paid for it.
+  const lift=Q.sum((record.orbital.payments.elevator??[]).map(Q.decode));
+  record.permanent.debugLegacyAdjustment=Q.encode(Q.sub(Q.decode(record.permanent.debugLegacyAdjustment),lift));
+  delete record.orbital.talents.elevator;delete record.orbital.payments.elevator;
   record.version = 29; record.orbital.version = 15;
   sol.talents = Object.fromEntries(keys.map(k => [k, sol.talents[k] ?? 0]));
   for (const k of Object.keys(sol.payments)) if (!['venus', 'mercury', 'belt', 'jupiter', 'transfers', 'accords', 'seizures', ...keys].includes(k)) delete sol.payments[k];

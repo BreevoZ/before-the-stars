@@ -9,6 +9,7 @@ import { warOdds } from './orbital-war.js';
 import { siteDaylight } from './celestial-clock.js';
 export const orbitalTime = seconds => `${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`;
 export function orbitalTalentEffect(o,key,rank=o.talents[key]){
+  if(key==='elevator')return rank?'地表 → 轨道枢纽 · 可建造环地球家园':'尚无升降通道';
   if(key==='recovery')return `${rank} 段 · 遗产 ×${2**rank}`;
   if(key==='reseed')return `核冬天 ${Math.round(R.winterSeconds*.75**rank)} 秒`;
   if(key==='diversity')return `至少 ${Math.min(R.maxCivilizations,R.minCivilizations+rank)} 个文明`;
@@ -50,6 +51,7 @@ export function buildOrbitalViewModel(s,{paused=false,talent='monitor',selected=
     // VII extends VI: the same observatory, renamed once the ark is launched.
     '#colony-stage-numeral':o.talents.voyage?'VII':'VI','#colony-stage-name':o.talents.voyage?'行星际':'轨道文明','#colony-lunar-rate':Q.format(lunarLegacyRate(o)),
     '#colony-lunar-level':`自动工场 ${o.talents.lunarIndustry} / 4 · ${3+o.talents.lunarIndustry*2} 处设施 · ${o.talents.massDriver?'质量投射器运行中':'穿梭货运'}`,
+    '#colony-build-habitat':o.talents.elevator?'扩建环地球家园':'建造太空电梯',
     '#colony-lunar-produced':`累计生产 ${Q.format(o.lunarProduced)} Legacy`,'#colony-habitat-state':`${o.talents.recovery} / ${R.habitatSections} 段 · 遗产 ×${2**o.talents.recovery}`,
     '#colony-time':orbitalTime(o.elapsed),
     '#colony-cycle':`第 ${o.cycle} 轮萌芽 · ${o.nuclearCycles} 次核毁灭${o.talents.doomsday&&!winter?` · 末日时钟 ${orbitalTime(Math.max(0,o.elapsed-cycleStartedAt(o)))} · 核毁灭 ×${doomsdayMultiplier(o).toFixed(2)}`:''}`,
