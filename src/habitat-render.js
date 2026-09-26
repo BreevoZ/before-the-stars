@@ -13,6 +13,28 @@ export function habitatPoint(angle,{rotation=0,radius=HABITAT.radius,height=0}={
   const [x,y,z]=turn([Math.cos(a)*radius,Math.sin(a)*Math.sin(t)*radius-Math.cos(t)*height,Math.sin(a)*Math.cos(t)*radius+Math.sin(t)*height]);
   return{x,y,z};
 }
+// Closest receiving point on the built arc, in the same 3D frame as the Moon.
+// Continuous around a complete ring; partial rings clamp to their actual ends.
+export function habitatReceivingPoint(target,{sections=7,rotation=0}={}){
+  const extent=Math.max(0,Math.min(7,sections))*SECTOR;if(!extent)return null;
+  const u=habitatPoint(0,{rotation,radius:1}),v=habitatPoint(Math.PI/2,{rotation,radius:1});
+  const dot=p=>target.x*p.x+target.y*p.y+target.z*p.z;
+  const angle=(Math.atan2(dot(v),dot(u))+TAU)%TAU;
+  const candidates=[0,extent,...(angle<=extent?[angle]:[])];
+  const best=candidates.reduce((a,b)=>dot(habitatPoint(a,{rotation}))>=dot(habitatPoint(b,{rotation}))?a:b);
+  return{...habitatPoint(best,{rotation}),angle:best};
+}
+// Spherical interpolation keeps a transfer outside the planet even when the
+// only built segment is on the opposite side. The ring itself is the endpoint.
+export function habitatCargoPoint(source,receiver,t){
+  const a=[source.x,source.y,source.z],b=[receiver.x,receiver.y,receiver.z],ra=Math.hypot(...a),rb=Math.hypot(...b),u=a.map(v=>v/ra),v=b.map(n=>n/rb);
+  const cosine=Math.max(-1,Math.min(1,dot(u,v))),angle=Math.acos(cosine),sin=Math.sin(angle);
+  let direction;
+  if(cosine>.99999)direction=norm(u.map((n,i)=>n*(1-t)+v[i]*t));
+  else if(cosine<-.99999){const tangent=norm(cross(u,Math.abs(u[1])<.9?[0,1,0]:[1,0,0]));direction=u.map((n,i)=>n*Math.cos(Math.PI*t)+tangent[i]*Math.sin(Math.PI*t));}
+  else direction=u.map((n,i)=>(n*Math.sin((1-t)*angle)+v[i]*Math.sin(t*angle))/sin);
+  const radius=ra*(1-t)+rb*t;return{x:direction[0]*radius,y:direction[1]*radius,z:direction[2]*radius};
+}
 export function elevatorEndpoints(rotation=0){return{surface:habitatPoint(0,{rotation,radius:1}),port:habitatPoint(0,{rotation})};}
 const xyz=p=>[p.x,p.y,p.z];
 const HULL=[188,204,183],DECK=[128,164,158],EDGE=[173,179,145],GLASS=[115,159,162];

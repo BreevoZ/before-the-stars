@@ -1,5 +1,6 @@
+import { sphereBase, sphereGradient, sphereNight, surfacePolygon } from './sphere-material.js';
 import { drawStructure, surfaceStructure, worldStructureSize } from './structure-models.js';
-import { drawHabitatLayer, habitatPoint } from './habitat-render.js';
+import { drawHabitatLayer, habitatReceivingPoint, habitatCargoPoint } from './habitat-render.js';
 import { drawLunarSphere, lunarSurfacePoint } from './lunar-render.js';
 import { ARK_SITES, drawArkLight } from './ark-lights.js';
 import { drawOrbitalScene, ORBITAL_SECONDS } from './orbital-scene.js';
@@ -20,7 +21,7 @@ export function drawOrbitStars(ctx,w,h,time=0,reduced=false){
     if(i%13===0){ctx.globalAlpha=pulse**5*.2;ctx.strokeStyle=C.light;ctx.lineWidth=.65;path(ctx,[[s.x*w-3,s.y*h],[s.x*w+3,s.y*h]]);ctx.stroke();path(ctx,[[s.x*w,s.y*h-3],[s.x*w,s.y*h+3]]);ctx.stroke();}
   }ctx.globalAlpha=1;
 }
-// Deliberately faceted coastlines; no bitmap textures or external map requests.
+// Restrained geographic silhouettes, softened before spherical projection.
 const CONTINENTS=[
   [[-168,66],[-142,71],[-121,58],[-100,73],[-58,49],[-81,26],[-97,17],[-117,31],[-128,51]],
   [[-81,13],[-61,9],[-36,-8],[-49,-25],[-68,-55],[-76,-24]],
@@ -41,7 +42,8 @@ function clipPolygon(points,axis,edge,sign){
 }
 const MESH=[];
 const polar=[[[ -180,74],[180,74],[180,90],[-180,90]],[[-180,-90],[180,-90],[180,-78],[-180,-78]]];
-for(const continent of [...CONTINENTS,...polar]){
+const softenCoast=points=>points.flatMap((a,i)=>{const b=points[(i+1)%points.length];return[[a[0]*.88+b[0]*.12,a[1]*.88+b[1]*.12],[a[0]*.12+b[0]*.88,a[1]*.12+b[1]*.88]];});
+for(const continent of [...CONTINENTS.map(softenCoast),...polar]){
   const minX=Math.floor(Math.min(...continent.map(p=>p[0]))/6)*6,maxX=Math.max(...continent.map(p=>p[0]));
   const minY=Math.floor(Math.min(...continent.map(p=>p[1]))/6)*6,maxY=Math.max(...continent.map(p=>p[1]));
   for(let lat=minY;lat<maxY;lat+=6)for(let lon=minX;lon<maxX;lon+=6){
@@ -53,17 +55,6 @@ function sphere(lon,lat,rotation,camera=0){const a=lon+rotation-camera,c=Math.co
 export function sitePosition(site,time=0,{cx=500,cy=322,r=238,camera=0}={}){
   const p=sphere(siteLongitude(site),(.5-site.y)*Math.PI,dayPhase(time)*TAU,camera);
   return{x:cx+p.x*r,y:cy+p.y*r,visible:p.z>.08,depth:p.z};
-}
-const shadows=new WeakMap();
-function terminator(ctx,camera){
-  const angle=Math.round(camera*80)/80,previous=shadows.get(ctx);if(previous?.angle===angle)return previous.canvas;
-  const canvas=previous?.canvas??ctx.canvas.ownerDocument.createElement('canvas');canvas.width=canvas.height=128;
-  const c=canvas.getContext('2d'),pixels=c.createImageData(128,128);
-  for(let y=0;y<128;y++)for(let x=0;x<128;x++){
-    const nx=(x+.5)/64-1,ny=(y+.5)/64-1,z2=1-nx*nx-ny*ny;if(z2<=0)continue;
-    const solar=nx*Math.cos(angle)+Math.sqrt(z2)*Math.sin(angle),i=(y*128+x)*4;
-    pixels.data[i]=7;pixels.data[i+1]=16;pixels.data[i+2]=23;pixels.data[i+3]=Math.round(clamp(.5-solar*2.8)*158);
-  }c.putImageData(pixels,0,0);shadows.set(ctx,{canvas,angle});return canvas;
 }
 const frostMasks=new WeakMap();
 function frostMask(ctx,frost,spin){
@@ -111,21 +102,20 @@ function nuclearWinter(ctx,cx,cy,r,o,{time,rotation,camera,reducedMotion}){
 function globe(ctx,cx,cy,r,o,{time=o.elapsed,camera=0,reducedMotion=false}={}){
   const rotation=dayPhase(time)*TAU,night=o.phase==='winter';
   const glow=ctx.createRadialGradient(cx,cy,r*.93,cx,cy,r*1.07);glow.addColorStop(0,'#759b8a00');glow.addColorStop(.6,'#8cbaa229');glow.addColorStop(1,'#759b8a00');disc(ctx,cx,cy,r*1.07,glow);
-  const ocean=ctx.createLinearGradient(cx-r,cy-r,cx+r,cy+r);ocean.addColorStop(0,'#3f6264');ocean.addColorStop(1,'#182f35');disc(ctx,cx,cy,r,ocean);
+  const sun=[Math.cos(camera),0,Math.sin(camera)];
+  ctx.save();ctx.translate(cx,cy);sphereBase(ctx,r,['#527677','#3b6064','#304b54'],sun);ctx.restore();
   ctx.save();ctx.beginPath();ctx.arc(cx,cy,r,0,TAU);ctx.clip();
-  for(const tile of MESH){const points=tile.points.map(([a,b])=>sphere(a*Math.PI/180,b*Math.PI/180,rotation,camera));if(points.every(p=>p.z<=0))continue;
-    const mid=points.reduce((v,p)=>({x:v.x+p.x/points.length,y:v.y+p.y/points.length,z:v.z+p.z/points.length}),{x:0,y:0,z:0});
-    const lit=clamp((mid.x*Math.cos(camera)+mid.z*Math.sin(camera))*.9+.18),base=Math.abs(tile.latitude)>72?[166,181,164]:[105,129,101];
-    const shade=.46+lit*.52;
-    ctx.fillStyle=`rgb(${base.map(v=>Math.round(v*shade)).join(',')})`;path(ctx,points.map(p=>[cx+p.x*r,cy+p.y*r]));ctx.closePath();ctx.fill();ctx.strokeStyle=ctx.fillStyle;ctx.lineWidth=.4;ctx.stroke();
+  ctx.save();ctx.translate(cx,cy);
+  const land=sphereGradient(ctx,r,['#9ca98d','#82967c','#506d62'],sun),ice=sphereGradient(ctx,r,['#c5cbb7','#a9bba7','#769185'],sun);
+  for(const tile of MESH){const points=tile.points.map(([a,b])=>sphere(a*Math.PI/180,b*Math.PI/180,rotation,camera));
+    surfacePolygon(ctx,points,r,Math.abs(tile.latitude)>72?ice:land);
   }
-  // Cache a small, smoothly sampled sphere-lighting mask. Overlapping alpha
-  // rectangles otherwise form a visible checkerboard and cost thousands of fills.
-  ctx.drawImage(terminator(ctx,camera),cx-r,cy-r,r*2,r*2);
+  ctx.restore();
   // Narrow cloud streams curve with the surface and spin with the planet.
   ctx.strokeStyle='#d0d7bc';ctx.lineWidth=Math.max(1,r*.009);ctx.globalAlpha=.10;
   for(let k=0;k<7;k++){const points=[];for(let i=0;i<18;i++){const p=sphere((k*.91+i*.038)+rotation*.08,Math.sin(k*2.1)*.9+i*.006,rotation,camera);if(p.z>.08)points.push([cx+p.x*r*1.003,cy+p.y*r*1.003]);}if(points.length>1){path(ctx,points);ctx.stroke();}}
   ctx.globalAlpha=1;
+  ctx.save();ctx.translate(cx,cy);sphereNight(ctx,r,sun);ctx.restore();
   for(const c of o.civilizations){const site=SITES.find(s=>s.id===c.site),p=sitePosition(site,time,{cx,cy,r,camera});if(!p.visible)continue;
     const daylight=Math.sin(siteLongitude(site)+rotation),alpha=clamp(-daylight+.2);
     if(c.alive&&c.age>1){for(let i=0;i<c.age*3;i++){ctx.globalAlpha=alpha*.8;disc(ctx,p.x+(noise(i+c.age)*18-9)*r/238,p.y+(noise(i+31)*14-7)*r/238,.5+c.age*.08,C.gold);}}
@@ -150,53 +140,46 @@ export function moonPosition(time,{cx=500,cy=322,r=238}={}){
   const a=lunarOrbitAngle(time),x=Math.cos(a)*r*MOON.rx,y=Math.sin(a)*r*MOON.ry,c=Math.cos(MOON.tilt),s=Math.sin(MOON.tilt),depth=Math.sin(a);
   return{x:cx+x*c-y*s,y:cy+x*s+y*c,depth,angle:a,m:r*MOON.size*(1+depth*.14)};
 }
-// Lunar traffic returns to the same physical collar as the Earth elevator.
-function ringDock(time,cx,cy,r){const p=habitatPoint(0,{rotation:-dayPhase(time)*TAU});return[cx+p.x*r,cy+p.y*r];}
 function moonOrbitPath(ctx,cx,cy,r,front){
   ctx.save();ctx.translate(cx,cy);ctx.rotate(MOON.tilt);ctx.setLineDash([1.5,7]);ctx.strokeStyle='#b8c3aa';ctx.lineWidth=.7;ctx.globalAlpha=front?.22:.12;
   ctx.beginPath();ctx.ellipse(0,0,r*MOON.rx,r*MOON.ry,0,front?0:Math.PI,front?Math.PI:TAU);ctx.stroke();ctx.restore();
 }
-// Drawn in two passes: whichever side of the planet the moon is on, it and its
-// cargo stream share that layer, so the globe hides them on the far side.
-function lunarSystem(ctx,o,moon,cx,cy,r,{ambient,reducedMotion}){
-  const{x,y,m}=moon;
-  const rotation=-moon.angle-Math.PI/2,sun=[1,0,0];
-  drawLunarSphere(ctx,x,y,m,{rotation,sun});
-  if(o.talents.outpost)drawLunarWorks(ctx,{x,y,r:m},o,rotation,sun,{time:ambient,reducedMotion,miniature:true});
-  const dock=ringDock(reducedMotion?0:o.elapsed,cx,cy,r),len=Math.hypot(dock[0]-x,dock[1]-y)||1,sx=x+(dock[0]-x)/len*m*.95,sy=y+(dock[1]-y)/len*m*.95;
-  // A gentle arc from the moon's limb, bowed away from the planet's centre.
-  const dx=dock[0]-sx,dy=dock[1]-sy,nx=-dy/len,ny=dx/len,bow=len*.16*(nx*(sx-cx)+ny*(sy-cy)>0?1:-1);
-  const at=t=>{const u=1-t;return[u*u*sx+2*u*t*((sx+dock[0])/2+nx*bow)+t*t*dock[0],u*u*sy+2*u*t*((sy+dock[1])/2+ny*bow)+t*t*dock[1]];};
-  if(!o.talents.outpost){ctx.setLineDash([2,6]);ctx.strokeStyle='#c9c19a55';ctx.lineWidth=.8;ctx.beginPath();for(let t=0;t<=1;t+=.05){const[p,q]=at(t);t?ctx.lineTo(p,q):ctx.moveTo(p,q);}ctx.stroke();ctx.setLineDash([]);return;}
-  const level=o.talents.lunarIndustry,driver=Boolean(o.talents.massDriver),relay=o.solar?.talents.lunarRelay??0;
-  // The corridor itself: faint before the driver, a steady filament after it.
-  ctx.strokeStyle=driver?'#e8d9a0':'#c9c19a';ctx.globalAlpha=(driver?.22:.1)+relay*.07;ctx.lineWidth=(driver?1.1:.7)+relay*.15;ctx.beginPath();for(let t=0;t<=1;t+=.04){const[p,q]=at(t);t?ctx.lineTo(p,q):ctx.moveTo(p,q);}ctx.stroke();ctx.globalAlpha=1;
-  if(reducedMotion)return;
-  if(!driver){
-    // Shuttles: a handful of capsules with a short exhaust, easing in to dock.
-    const count=Math.min(18,2+level+relay*3),interval=6/(1+level+relay);
-    for(let k=0;k<count;k++){const t=((ambient/interval)+k/count)%1,e=t*t*(3-2*t),[px,py]=at(e),[qx,qy]=at(Math.max(0,e-.035));
-      ctx.globalAlpha=Math.sin(t*Math.PI)*.8;ctx.strokeStyle='#e9c98a';ctx.lineWidth=1;path(ctx,[[qx,qy],[px,py]]);ctx.stroke();disc(ctx,px,py,1.3,'#f3e7b8');}
-  }else{
-    // Mass driver: a continuous stream of fast pellets with long trails, a
-    // muzzle flash on the moon and a catch flash at the ring each time one lands.
-    const count=Math.min(40,8+level*3+relay*6),interval=2.4/(1+level*.5+relay*.4);
-    for(let k=0;k<count;k++){const t=((ambient/interval)+k/count)%1,e=t**.8,[px,py]=at(e),[qx,qy]=at(Math.max(0,e-.12));
-      const trail=ctx.createLinearGradient(qx,qy,px,py);trail.addColorStop(0,'#f1dfa000');trail.addColorStop(1,'#f5e6b6d0');
-      ctx.strokeStyle=trail;ctx.lineWidth=1.2;path(ctx,[[qx,qy],[px,py]]);ctx.stroke();disc(ctx,px,py,1.1,'#fff4cf');
-      if(t>.94){ctx.globalAlpha=(1-t)/.06*.8;disc(ctx,dock[0],dock[1],3+(t-.94)*60,'#f6e7b340');ctx.globalAlpha=1;}}
-    const pulse=(ambient/interval*count)%1;ctx.globalAlpha=.5*(1-pulse);const[mx,my]=at(.02);disc(ctx,mx,my,m*.28*(.6+pulse),'#f7e8b855');ctx.globalAlpha=1;
+// Moon and cargo each get near/far passes, with the globe between them.
+// Receiving points follow the nearest built ring section, independent of the lift.
+function lunarSystem(ctx,o,moon,cx,cy,r,{ambient,reducedMotion,sections=o.talents.recovery},front){
+  const{x,y,m}=moon,rotation=-moon.angle-Math.PI/2,sun=[1,0,0];
+  if((moon.depth>=0)===front){
+    drawLunarSphere(ctx,x,y,m,{rotation,sun});
+    if(o.talents.outpost)drawLunarWorks(ctx,{x,y,r:m},o,rotation,sun,{time:ambient,reducedMotion,miniature:true});
   }
-  ctx.globalAlpha=1;
+  const source={x:(x-cx)/r,y:(y-cy)/r,z:moon.depth*MOON.rx};
+  const dock=habitatReceivingPoint(source,{sections,rotation:-dayPhase(reducedMotion?0:o.elapsed)*TAU});if(!dock)return;
+  const delta={x:dock.x-source.x,y:dock.y-source.y,z:dock.z-source.z},length=Math.hypot(...Object.values(delta));
+  const start={x:source.x+delta.x/length*m/r,y:source.y+delta.y/length*m/r,z:source.z+delta.z/length*m/r};
+  const at=t=>habitatCargoPoint(start,dock,t);
+  const screen=p=>[cx+p.x*r,cy+p.y*r];
+  ctx.save();ctx.strokeStyle='#bdc9ac';ctx.lineWidth=.65;ctx.globalAlpha=o.talents.massDriver?.2:.09;
+  let active=false;ctx.beginPath();for(let i=0;i<=64;i++){const p=at(i/64),[px,py]=screen(p);if((p.z>=0)!==front){active=false;continue;}if(active)ctx.lineTo(px,py);else ctx.moveTo(px,py);active=true;}ctx.stroke();
+  if((dock.z>=0)===front){const[dx,dy]=screen(dock);ctx.globalAlpha=.85;disc(ctx,dx,dy,1.6,'#d6d7b5');}
+  if(o.talents.outpost){
+    const driver=Boolean(o.talents.massDriver),relay=o.solar?.talents.lunarRelay??0,level=o.talents.lunarIndustry;
+    const count=Math.min(16,(driver?6:2)+level+relay*2),period=(driver?4:10)/(1+level*.15+relay*.15);
+    for(let i=0;i<count;i++){
+      const t=reducedMotion?(i+.5)/count:(ambient/period+i/count)%1,p=at(t);if((p.z>=0)!==front)continue;
+      const q=at(Math.max(0,t-(driver?.017:.007))),a=screen(p),b=screen(q);
+      ctx.globalAlpha=.7;ctx.strokeStyle='#e1d5ae';ctx.lineWidth=driver?1:.8;path(ctx,[b,a]);ctx.stroke();disc(ctx,...a,driver?1:.9,'#ece5c5');
+    }
+  }
+  ctx.restore();
 }
 export function drawOrbitalColony(ctx,width,height,o,{reducedMotion=false,ambientTime=o.elapsed,construction=1}={}){
   ctx.save();ctx.scale(width/1000,height/620);drawOrbitStars(ctx,1000,620,ambientTime,reducedMotion);
   const time=reducedMotion?0:o.elapsed;
-  const moon=o.talents.transit?moonPosition(time):null,system={ambient:ambientTime,reducedMotion};
-  if(moon){moonOrbitPath(ctx,500,322,238,false);if(moon.depth<0)lunarSystem(ctx,o,moon,500,322,238,system);}
+  const moon=o.talents.transit?moonPosition(time):null,system={ambient:ambientTime,reducedMotion,sections:Math.max(0,o.talents.recovery-(construction<1?1-construction:0))};
+  if(moon){moonOrbitPath(ctx,500,322,238,false);lunarSystem(ctx,o,moon,500,322,238,system,false);}
   const ring={sections:o.talents.recovery-(o.talents.recovery&&construction<1?1:0),building:o.talents.recovery&&construction<1?construction:0,elevator:Boolean(o.talents.elevator),rotation:-dayPhase(time)*TAU,time:ambientTime,reducedMotion,expanded:Boolean(o.solar?.talents.spaceElevator)},earth={x:500,y:322,r:238};
   drawHabitatLayer(ctx,earth,ring,false);globe(ctx,500,322,238,o,{time,reducedMotion});drawHabitatLayer(ctx,earth,ring,true);
-  if(moon){moonOrbitPath(ctx,500,322,238,true);if(moon.depth>=0)lunarSystem(ctx,o,moon,500,322,238,system);}
+  if(moon){moonOrbitPath(ctx,500,322,238,true);lunarSystem(ctx,o,moon,500,322,238,system,true);}
   for(const w of o.wars){const points=w.participants.map(id=>sitePosition(SITES.find(s=>s.id===o.civilizations.find(c=>c.id===id).site),time));if(!points.every(p=>p.visible))continue;
     const[a,b]=points;ctx.strokeStyle=C.war;ctx.lineWidth=1;ctx.setLineDash([3,6]);ctx.lineDashOffset=reducedMotion?0:-ambientTime*3;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.quadraticCurveTo((a.x+b.x)/2,(a.y+b.y)/2-45,b.x,b.y);ctx.stroke();ctx.setLineDash([]);
   }

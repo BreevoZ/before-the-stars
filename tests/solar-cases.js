@@ -46,6 +46,22 @@ export function registerSolarTests(test, assert, near) {
     assert(mars['#solar-select-mars@data-reach']==='transit'&&venus['#solar-select-venus@data-reach']==='survey'&&venus['#solar-facility-build@disabled']);
     assert(serializeSession(s)===raw);
   });
+  test('World operations: quotes separate costs and restrictions; current/next output includes all purchased multipliers',()=>{
+    const s=voyageFixture();setDebugLegacy(s,2**36);for(let i=0;i<30*(PIONEER.seconds+1);i++)updateOrbital(s,1/30);
+    const view=()=>buildSolarViewModel(s,{view:'mars',transferCiv:s.orbital.civilizations[0]?.id});
+    let v=view();assert(v['#solar-transfer-go@disabled']&&v['#solar-transfer-hint'].includes('解锁'));
+    assert(v['#solar-dome-build@disabled']&&v['#solar-dome-hint'].includes('火星港'));
+    assert(purchaseSolarTalent(s,'harbor'));v=view();assert(!v['#solar-dome-build@disabled']&&v['#solar-dome-effect']==='0 → 2 户');
+    assert(purchaseSolarTalent(s,'dome')&&purchaseSolarTalent(s,'transfer'));v=view();
+    assert(!v['#solar-transfer-go@disabled']&&v['#solar-transfer-cost']!=='—'&&v['#solar-transfer-time'].includes('秒'));
+    const o=s.orbital,raw=serializeSession(s);buildSolarViewModel(s,{view:'venus'});assert(serializeSession(s)===raw);
+    // Read-only presentation fixtures: output preview must use the same economy pipeline.
+    o.solar.facilities.venus=1;o.solar.talents.refinery=1;
+    const current=facilityRate(o,'venus');v=buildSolarViewModel(s,{view:'venus'});
+    assert(v['#solar-facility-effect']===`${Q.format(current)} → ${Q.format(current*2)} Legacy/s`);
+    o.solar.facilities.mercury=1;v=buildSolarViewModel(s,{view:'mercury'});
+    assert(v['#solar-facility-effect']===`全行星工业 ×${Q.format(industryBoost(o))} → ×${Q.format(industryBoost(o)*1.5)}`);
+  });
   test('World geometry: self rotation stays on a sphere; orbiting moons have depth and cannot be clicked through their parent',()=>{
     for(const t of [0,8,47,120]){const p=surfacePoint(.7,.4,spinOf(destination('mars'),t),.16);near(p.x*p.x+p.y*p.y+p.z*p.z,1);}
     assert(surfacePoint(0,0,0).z>0 && surfacePoint(0,0,Math.PI).z<0);
@@ -232,7 +248,7 @@ export function registerSolarTests(test, assert, near) {
     const kept=parseSession(JSON.stringify(v26));assert(kept.orbital.solar.facilities.jupiter===1&&kept.orbital.solar.talents.mining===0,'Footholds built under v26 stay');
     const vi=voyageReady();vi.orbital.solar.facilities.venus=1;vi.orbital.solar.payments.venus=[FACILITIES.venus.costs[0]];
     let rejected=false;try{parseSession(serializeSession(vi));}catch{rejected=true;}assert(rejected,'Industry needs 远航协议');
-    const view=buildSolarViewModel(s,{view:'venus'});assert(!view['#solar-facility@hidden']&&view['#solar-facility-build'].includes('火星港')&&view['#solar-facility-build@disabled']);
+    const view=buildSolarViewModel(s,{view:'venus'});assert(!view['#solar-facility@hidden']&&view['#solar-facility-hint'].includes('火星港')&&view['#solar-facility-build@disabled']);
     assert(buildSolarViewModel(s,{view:'system',selected:'mars'})['#colony-body-status'].includes('先遣编队'));
     assert(buildSolarViewModel(s,{view:'system',selected:'saturn'})['#solar-facility@hidden']);
   });
@@ -337,6 +353,21 @@ export function registerSolarTests(test, assert, near) {
       el('solar-select-venus').click();w.__testFrame(now+=100);
       assert(el('solar-facility-level').textContent==='1 / 5' && !el('solar-facility-build').disabled);
       assert(el('solar-nav-state-venus').textContent==='驻地' && !d.body.dataset.fixtureError);
+    }finally{frame.remove();}
+  });
+  test.browser('World operations UI: direct dome purchase, transfer unlock and dispatch remain usable at 320px and persist normally',async()=>{
+    const s=voyageFixture();setDebugLegacy(s,2**36);for(let i=0;i<30*(PIONEER.seconds+1);i++)updateOrbital(s,1/30);assert(purchaseSolarTalent(s,'harbor'));
+    const frame=await mountFixture(serializeSession(s),false,'debug',{reducedMotion:true});
+    try{frame.style.width='320px';const d=frame.contentDocument,w=frame.contentWindow,el=id=>d.getElementById(id);el('solar-select-mars').click();
+      const before=s.permanent.legacy;assert(!el('solar-dome-build').disabled);el('solar-dome-build').click();
+      let saved=parseSession(w.__storage.getItem(DEBUG_SAVE_KEY));assert(saved.orbital.solar.talents.dome===1&&Q.eq(saved.permanent.legacy,Q.sub(before,SOLAR_TALENTS.dome.costs[0])));
+      assert(el('solar-dome-effect').textContent==='2 → 4 户'&&!el('solar-transfer-unlock').hidden);
+      el('solar-transfer-unlock').click();assert(el('solar-detail-name').textContent==='文明转运');el('solar-buy').click();el('close-solar-talents').click();
+      assert(!el('solar-transfer-go').disabled);el('solar-transfer-go').click();el('solar-transfer-go').click();
+      saved=parseSession(w.__storage.getItem(DEBUG_SAVE_KEY));assert(saved.orbital.solar.transfers.length===1&&saved.orbital.solar.payments.transfers.length===1);
+      assert(el('solar-transfer-hint').textContent.includes('途中'));
+      for(const id of ['solar-transfer-go','solar-dome-build','solar-transfer-civ']){const r=el(id).getBoundingClientRect();assert(r.left>=0&&r.right<=321&&r.height>=44,id);}
+      assert(!el('solar-colony').textContent.includes('undefined')&&!d.body.dataset.fixtureError);
     }finally{frame.remove();}
   });
   test.browser('Shipyard UI: seven purchases update the lunar lights, gates, prices and persisted ranks without enabling early departure', async () => {

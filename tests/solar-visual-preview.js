@@ -1,4 +1,7 @@
 import { drawHabitatLayer } from '../src/habitat-render.js';
+import { drawPlanetSphere } from '../src/planet-render.js';
+import { drawLunarSphere } from '../src/lunar-render.js';
+import { destination } from '../src/solar-bodies.js';
 import { drawEarthSphere } from '../src/orbital-render.js';
 import { visualFixture } from './solar-visual-fixture.js';
 import { drawSolarSystem, DESTINATIONS } from '../src/solar-render.js';
@@ -13,6 +16,14 @@ import { winterSeconds } from '../src/colony-war.js';
 const el=id=>document.getElementById(id),canvases=[],game=createGame();let session,time=0,last=0;
 const add=(title,paint,short=false,height=null)=>{const section=document.createElement('section'),h=document.createElement('h2'),c=document.createElement('canvas');h.textContent=title;section.append(h,c);el('gallery').append(section);canvases.push({c,paint,short,height});};
 add('SOL / 太阳系航图',(c,w,h,o,opt)=>drawSolarSystem(c,w,h,o,opt));
+add('WORLDS / 地球 · 月球 · 水星 · 火星',(c,w,h,o,opt)=>{
+  c.fillStyle='#142123';c.fillRect(0,0,w,h);const cols=w<500?2:4,cw=w/cols,ch=230;
+  ['earth','moon','mercury','mars'].forEach((id,i)=>{const x=(i%cols+.5)*cw,y=Math.floor(i/cols)*ch+106,r=Math.min(cw*.37,85);
+    if(id==='moon')drawLunarSphere(c,x,y,r,{rotation:opt.reducedMotion?0:opt.time/180*Math.PI*2,sun:[1,0,0]});
+    else drawPlanetSphere(c,destination(id),x,y,r,{time:opt.time,reducedMotion:opt.reducedMotion,sunAngle:0});
+    c.fillStyle='#a7b4a0';c.font='11px system-ui';c.textAlign='center';c.fillText(({earth:'地球',moon:'月球',mercury:'水星',mars:'火星'})[id],x,Math.floor(i/cols)*ch+215);
+  });
+},false,w=>w<500?460:230);
 add('HABITAT / 升降枢纽 → 七节家园',(c,w,h,o,opt)=>{
   c.fillStyle='#142123';c.fillRect(0,0,w,h);const cols=w<500?2:4,cw=w/cols,ch=220;
   [0,1,3,7].forEach((sections,i)=>{const g={x:(i%cols+.5)*cw,y:Math.floor(i/cols)*ch+100,r:Math.min(cw*.36,80)},options={sections,elevator:true,time:opt.time,rotation:opt.reducedMotion?0:-opt.time*.025,reducedMotion:opt.reducedMotion};

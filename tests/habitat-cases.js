@@ -2,7 +2,7 @@ import { Q } from '../src/quantity.js';
 import { ORBITAL_TALENTS as T } from '../src/orbital-config.js';
 import { getOrbitalTalentState, purchaseOrbitalTalent } from '../src/orbital-game.js';
 import { orbitalYieldMultiplier } from '../src/celestial-economy.js';
-import { HABITAT, habitatPoint, elevatorEndpoints, drawHabitatLayer } from '../src/habitat-render.js';
+import { HABITAT, habitatPoint, habitatReceivingPoint, habitatCargoPoint, elevatorEndpoints, drawHabitatLayer } from '../src/habitat-render.js';
 import { lunarSurfacePoint, lunarSurfaceRadius, drawLunarSphere } from '../src/lunar-render.js';
 import { drawLunarColony, drawOrbitalColony } from '../src/orbital-render.js';
 import { serializeSession, parseSession, mapSessionQuantities, DEBUG_SAVE_KEY } from '../src/save.js';
@@ -45,7 +45,22 @@ export function registerHabitatTests(test,assert,near){
       assert((surface.z>=0)===(port.z>=0));
     }
     const a=lunarSurfacePoint(.22,-.12,0),b=lunarSurfacePoint(.22,-.12,Math.PI);near(a.x,-b.x);near(a.z,-b.z);near(a.y,b.y);
-    const heights=[];for(let i=0;i<50;i++)heights.push(lunarSurfaceRadius(i*.17,Math.sin(i)*.7));assert(Math.max(...heights)-Math.min(...heights)>.001,'Craters deform vertices');
+    for(let i=0;i<50;i++){const lon=i*.17,lat=Math.sin(i)*.7,p=lunarSurfacePoint(lon,lat);near(lunarSurfaceRadius(lon,lat),1);near(Math.hypot(p.x,p.y,p.z),1);}
+  });
+  test('Habitat cargo: receiver is nearest on built arcs, moves with the Moon and never needs the elevator collar',()=>{
+    assert(habitatReceivingPoint({x:2,y:0,z:0},{sections:0})===null);
+    for(const sections of [1,3.4,7])for(const rotation of [0,.6,3])for(let i=0;i<16;i++){
+      const target={x:Math.cos(i)*1.7,y:Math.sin(i)*.3,z:Math.sin(i)*1.6},p=habitatReceivingPoint(target,{sections,rotation});
+      assert(p.angle>=0&&p.angle<=sections*Math.PI*2/7);near(Math.hypot(p.x,p.y,p.z),HABITAT.radius);
+      const distance=q=>(q.x-target.x)**2+(q.y-target.y)**2+(q.z-target.z)**2;
+      for(let j=0;j<=80;j++)assert(distance(p)<=distance(habitatPoint(j/80*sections*Math.PI*2/7,{rotation}))+1e-9);
+    }
+    for(const source of [{x:1.7,y:0,z:0},{x:-1.7,y:0,z:0}]){
+      const dock=habitatReceivingPoint({x:1,y:0,z:0},{sections:2});
+      for(let i=0;i<=30;i++){const p=habitatCargoPoint(source,dock,i/30);assert(Math.hypot(p.x,p.y,p.z)>=HABITAT.radius-1e-9);}
+      for(const k of ['x','y','z']){near(habitatCargoPoint(source,dock,0)[k],source[k]);near(habitatCargoPoint(source,dock,1)[k],dock[k]);}
+    }
+    const a=habitatReceivingPoint({x:2,y:0,z:0}),b=habitatReceivingPoint({x:-2,y:0,z:0});assert(Math.abs(a.angle-b.angle)>2);
   });
   test.browser('Habitat visual: seven real sections, growing ends, near/far occlusion and moon light are distinct at phone size',()=>{
     const c=document.createElement('canvas');c.width=320;c.height=280;const x=c.getContext('2d'),g={x:160,y:140,r:90};
@@ -57,6 +72,14 @@ export function registerHabitatTests(test,assert,near){
     const s=lunarFixture(),raw=serializeSession(s);
     for(const draw of [drawLunarColony,drawOrbitalColony]){draw(x,320,280,s.orbital,{reducedMotion:true});const first=c.toDataURL();draw(x,320,280,{...s.orbital,elapsed:101},{reducedMotion:true,ambientTime:40});assert(c.toDataURL()===first);}
     assert(serializeSession(s)===raw);
+  });
+  test.browser('Habitat material: lunar phases use smooth shared light, keep a circular limb and hide the dark hemisphere',()=>{
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=160;const c=canvas.getContext('2d');
+    const sample=sun=>{c.clearRect(0,0,160,160);drawLunarSphere(c,80,80,60,{rotation:.4,sun});return c.getImageData(0,0,160,160).data;};
+    const full=sample([0,0,1]),quarter=sample([1,0,0]),newMoon=sample([0,0,-1]),index=(x,y)=>(y*160+x)*4;
+    assert(full[index(80,80)]>newMoon[index(80,80)]+50);
+    assert(quarter[index(115,80)]>quarter[index(45,80)]+30);
+    for(const data of [full,quarter,newMoon]){assert(data[index(10,10)+3]===0&&data[index(80,23)+3]===255&&data[index(23,80)+3]===255);}
   });
   test.browser('Habitat UI: the home button opens the lift first; mobile keyboard buying, ring link and saved reload agree',async()=>{
     const s=colonyFixture({legacy:1000}),frame=await mountFixture(serializeSession(s),false,'debug',{reducedMotion:true});let raw;

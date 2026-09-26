@@ -5,7 +5,7 @@ import { DESTINATIONS, SATELLITES, destination, systemOf, satellitesOf } from '.
 import { drawWorldScene, satelliteAt } from './solar-world-render.js';
 import { drawShipyard } from './shipyard-render.js';
 import { FACILITIES, buildFacility } from './solar-industry.js';
-import { transferCivilization } from './solar-colony.js';
+import { transferCivilization, purchaseSolarTalent } from './solar-colony.js';
 import { watchColonyWar, liveColonyWar, startAccord, seizeArsenals, GROWTH, fundGrowth } from './colony-war.js';
 import { drawDomes } from './dome-render.js';
 import { createRenderer, MARS_PALETTE } from './render.js';
@@ -21,7 +21,8 @@ export function createSolarUI(getSession,{openTree,replay,commit,openSolarTree})
     return o?.talents.voyage?'system':'earth';};
   // Earth civilizations that could board an ark: rebuilt only when the list changes.
   function syncCivOptions(o){const select=el('solar-transfer-civ'),list=o.civilizations.filter(c=>c.alive),signature=list.map(c=>`${c.id}:${c.age}:${c.warId?1:0}`).join('|');
-    if(signature===civSignature)return;civSignature=signature;const keep=select.value;select.replaceChildren(...list.map(c=>{const option=document.createElement('option');option.value=c.id;option.textContent=`${c.name} · ${AGES[c.age].numeral}${c.warId?' · 交战中':''}`;return option;}));
+    if(signature===civSignature&&select.options.length)return;civSignature=signature;const keep=select.value;select.replaceChildren(...list.map(c=>{const option=document.createElement('option');option.value=c.id;option.textContent=`${c.name} · ${AGES[c.age].numeral}${c.warId?' · 交战中':''}`;return option;}));
+    if(!list.length){const option=document.createElement('option');option.value='';option.textContent='地球暂无存续文明';select.append(option);}
     select.value=list.some(c=>c.id===keep)?keep:(list.find(c=>!c.warId)?.id??list[0]?.id??'');}
   function sync(){const s=getSession();if(!s.orbital?.started)return;visualEvents=history.observe(s.orbital);view=allowed(view);el('colony-map').dataset.view=view;for(const id of ['earth','moon'])el(`colony-view-${id}`).setAttribute('aria-pressed',String(view===id));
     syncCivOptions(s.orbital);
@@ -51,6 +52,9 @@ export function createSolarUI(getSession,{openTree,replay,commit,openSolarTree})
   el('solar-transfer-civ').addEventListener('change',sync);
   for(let i=0;i<3;i++)el(`solar-war-${i}`).addEventListener('click',()=>{const war=getSession().orbital.solar.colonies.mars.wars[i];if(!war)return;watching=watching===war.id?null:war.id;sync();});
   el('solar-transfer-go').addEventListener('click',()=>{if(transferCivilization(getSession(),el('solar-transfer-civ').value)){civSignature='';commit();sync();}});
+  el('solar-dome-build').addEventListener('click',()=>{if(purchaseSolarTalent(getSession(),'dome')){commit();sync();}});
+  el('solar-transfer-unlock').addEventListener('click',()=>openSolarTree?.(getSession().orbital.solar.talents.dome?'transfer':'dome'));
+  el('solar-facility-tree').addEventListener('click',()=>openSolarTree?.(Object.keys(FACILITIES).find(k=>FACILITIES[k].body===selected)));
   el('solar-colony-tree').addEventListener('click',()=>openSolarTree?.('dome'));
   for(const id of ['earth','moon'])el(`colony-view-${id}`).addEventListener('click',()=>setView(id));
   // Satellites drop down from their planet: on hover or focus with a mouse or

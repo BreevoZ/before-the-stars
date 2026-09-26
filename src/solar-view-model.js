@@ -5,7 +5,7 @@ import { ORBITAL_TALENTS as T } from './orbital-config.js';
 import { DESTINATIONS, SATELLITES, destination, bodyKindLabel, systemOf, satellitesOf } from './solar-bodies.js';
 import { orbitalPeriod, EARTH_YEAR_SECONDS } from './solar-config.js';
 import { ARK_COUNT } from './shipyard-render.js';
-import { transferState, transferQuote, windowTiming, domeCapacity, colonistRate, colonyRate, COLONY_RULES, SOLAR_TALENTS, solarRank } from './solar-colony.js';
+import { transferState, transferQuote, windowTiming, domeCapacity, colonyCount, householdsPerDome, solarTalentState, colonistRate, colonyRate, COLONY_RULES, SOLAR_TALENTS, solarRank } from './solar-colony.js';
 import { AGES } from './game-config.js';
 import { reachNeed, solarTalentEffect } from './solar-tree-view-model.js';
 import { FACILITIES, arksMoored, arrivalAt, arrived, facilityRate, facilityState, industryRate, industryBoost, flightTo, route, pioneerAt } from './solar-industry.js';
@@ -57,7 +57,7 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
   if(vii&&b.id===COLONY_RULES.target){
     const sol=o.solar,world=sol.colonies.mars,residents=world.civs,flights=sol.transfers,cap=domeCapacity(o),timing=windowTiming(o),civ=o.civilizations.find(c=>c.id===transferCiv),state=transferState(s,transferCiv);
     const winter=world.phase==='winter',env=WORLDS.mars,idle=residents.filter(c=>!c.warId).length;
-    v['#solar-colony-capacity']=winter?`核冬天 · ${Math.ceil(world.remaining)} 秒`:sol.talents.dome?`${residents.length+world.uplifted.length} / ${cap} 户${flights.length?` · 在途 ${flights.length}`:''}`:'尚无穹顶';
+    v['#solar-colony-capacity']=winter?`核冬天 · ${Math.ceil(world.remaining)} 秒`:sol.talents.dome?`${colonyCount(o)-flights.length} / ${cap} 户${flights.length?` · 在途 ${flights.length}`:''}`:'尚无穹顶';
     v['#solar-wars-empty']=world.wars.length?'':winter?'核冬天中没有战争。':'暂无战争。';
     v['#solar-colony@data-winter']=String(winter);
     // What the planet is doing: its own winter, its wars, or the fuse between idle neighbours.
@@ -76,9 +76,22 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
     v['#solar-window']=sol.talents.survey?(timing.open?`地火窗口开启 · ${Math.ceil(timing.seconds)} 秒后关闭`:`地火窗口关闭 · ${Math.ceil(timing.seconds)} 秒后开启 · 逆窗发射更慢更贵`):(timing.open?'地火窗口开启':'地火窗口关闭 · 逆窗发射更慢更贵');
     v['#solar-window@data-open']=String(timing.open);
     const quote=civ?transferQuote(o,civ):null;
-    v['#solar-transfer-quote']=quote?`${civ.name} · ${AGES[civ.age].numeral} · ${Q.format(quote.cost)} Legacy · 航程 ${Math.round(quote.seconds)} 秒${quote.open?'':' · 逆窗'} · 抵达后 +${Q.format(colonistRate(civ))} Legacy/s`:'';
-    v['#solar-transfer-go']={ready:'发射方舟 ↗',locked:'需要「文明转运」',winter:'地球正处于核冬天',colonyWinter:'火星正处于核冬天',selection:'选择一个地球文明',war:'该文明正在交战',capacity:sol.talents.dome?'穹顶已满 · 扩建火星穹顶':'需要「火星穹顶」',fleet:'转运方舟都在途中',legacy:'遗产不足'}[state];
+    v['#solar-transfer-quote']=civ?`${civ.name} · ${AGES[civ.age].name} · ${temper(civ)}`:'等待地球文明萌芽。';
+    v['#solar-transfer-cost']=quote?Q.format(quote.cost):'—';
+    v['#solar-transfer-time']=quote?`${Math.round(quote.seconds)} 秒`:'—';
+    v['#solar-transfer-yield']=quote?`+${Q.format(colonistRate(civ))}`:'—';
+    v['#solar-transfer-go']='发射转运方舟 ↗';
+    v['#solar-transfer-hint']={ready:'离开后地球点位会重新萌芽；在途文明预占一户容量。',locked:'先在星图解锁文明转运。',winter:'地球正处于核冬天，等待文明重新萌芽。',colonyWinter:'火星正处于核冬天，暂时不能接收居民。',selection:'先选择一个仍在地球上的文明。',war:'该文明正在交战，选择一个空闲文明。',capacity:sol.talents.dome?'居住容量已满，请先扩建穹顶。':'先建起第一座火星穹顶。',fleet:'所有转运方舟都在途中，等待它们抵达。',legacy:'遗产不足，等待生产或文明收割。'}[state];
     v['#solar-transfer-go@disabled']=state!=='ready';
+    v['#solar-transfer-unlock@hidden']=state!=='locked';
+    v['#solar-transfer-unlock']=sol.talents.dome?'解锁文明转运 ↗':'查看穹顶前置科技 ↗';
+    v['#solar-residents-empty']=residents.length||flights.length?'':'暂无地表居民。可从地球转运文明。';
+    const domeLevel=sol.talents.dome,dome=SOLAR_TALENTS.dome,domeState=solarTalentState(s,'dome'),max=domeLevel===dome.costs.length;
+    v['#solar-dome-effect']=max?`${cap} 户 · 已建满`:`${cap} → ${cap+householdsPerDome(o)} 户`;
+    v['#solar-dome-cost']=max?'—':Q.format(dome.costs[domeLevel]);
+    v['#solar-dome-build']=max?'穹顶已全部建成':domeLevel?'扩建居住穹顶':'建造第一座穹顶';
+    v['#solar-dome-build@disabled']=domeState!=='ready';
+    v['#solar-dome-hint']={ready:'新增容量可接收更多文明；已有居民不受影响。',prerequisite:'先在星图建造火星港。',transit:'先遣编队尚未抵达火星。',legacy:'遗产不足，穹顶不会提前扣费。',max:'继续在星图研究殖民科技。',locked:'远航后开放。'}[domeState]??'';
     // Each resident carries its own path past the filter: an accord if it is peaceful.
     const rows=[...residents.map(c=>({civ:c,text:`${c.name} · ${AGES[c.age].numeral} · ${temper(c)} · +${Q.format(colonistRate(c))} Legacy/s${c.warId?' · 交战中':''}`,transit:false})),
       ...flights.map(t=>({text:`${t.civ.name} · 航行中 · ${Math.max(0,Math.ceil(t.arriveAt-o.elapsed))} 秒`,transit:true}))];
@@ -96,7 +109,7 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
     v['#solar-growth-fund@hidden']=!step;v['#solar-growth-fund@disabled']=fund!=='ready';
     v['#solar-growth-fund']=step?`援建「${step.name}」 · ${Q.format(growthFundCost(world))} Legacy${fund==='legacy'?' · 遗产不足':''}`:'';
     for(let i=0;i<10;i++){const c=uplifted[i];v[`#solar-uplifted-${i}@hidden`]=!c;v[`#solar-uplifted-${i}`]=c?`★ ${c.name} · ${c.via==='accord'?'签署存续协议':'核武被接管后停战'} · +${Q.format(upliftedRate('mars'))} Legacy/s`:'';}
-    v['#solar-dome-caption']=sol.talents.dome?`${sol.talents.dome} / ${SOLAR_TALENTS.dome.costs.length} 座穹顶 · 每座两户 · ${residents.length+uplifted.length+flights.length} / ${cap} 已占用${uplifted.length?` · 其中 ${uplifted.length} 户已升格`:''}`:'火星尚无穹顶：在行星际星图中建起第一座。';
+    v['#solar-dome-caption']=sol.talents.dome?`${sol.talents.dome} / ${SOLAR_TALENTS.dome.costs.length} 座 · 每座 ${householdsPerDome(o)} 户 · 已占用 ${colonyCount(o)} / ${cap}（含在途）`:'等待第一座穹顶落成。';
   }
   // The foothold on the selected body, if it has one.
   const f=facilityKey&&FACILITIES[facilityKey],state=f?facilityState(s,facilityKey):'locked',level=f?o.solar.facilities[facilityKey]:0;
@@ -104,13 +117,14 @@ export function buildSolarViewModel(s,{view='earth',selected='earth',transferCiv
   if(f){
     v['#solar-facility-name']=f.name;v['#solar-facility-level']=`${level} / ${f.costs.length}`;v['#solar-facility-description']=f.description;
     for(let i=1;i<=5;i++){v[`#solar-facility-rank-${i}@hidden`]=i>f.costs.length;v[`#solar-facility-rank-${i}@class:built`]=i<=level;}
-    const next=level<f.costs.length?level+1:level,rate=r=>r?f.base*2**(r-1)*industryBoost(o):0;
-    v['#solar-facility-effect']=f.kind==='boost'?`行星工业产能 ×${2**level}${level<f.costs.length?` → ×${2**next}`:''}`:`${Q.format(facilityRate(o,facilityKey))} Legacy/s${level<f.costs.length?` → ${Q.format(rate(next))} Legacy/s`:''}`;
-    const cost=level<f.costs.length?Q.format(f.costs[level]):'',wait=Math.max(0,Math.ceil((arrivalAt(o,f.body)??0)-o.elapsed)),leg=route(o,f.body);
-    // The first rank sends an ark: say where from and for how long.
-    const dispatch=leg.blocked?'':`${[leg.from,...leg.via].map(placeName).join(' → ')}出发 · 航程 ${leg.seconds} 秒`;
-    v['#solar-facility-build']={ready:level?`扩建 · ${cost} Legacy`:`派遣方舟 · ${cost} Legacy · ${dispatch}`,legacy:`${cost} Legacy · 遗产不足${level?'':` · ${dispatch}`}`,transit:`方舟航行中 · ${wait} 秒后抵达`,
-      prerequisite:facilityNeed(o,facilityKey),max:'已全部建成',locked:'远航后开放'}[state];
+    const max=level===f.costs.length,next=max?level:level+1;
+    const projected={...o,solar:{...o.solar,facilities:{...o.solar.facilities,[facilityKey]:next}}};
+    v['#solar-facility-effect']=f.kind==='boost'?`全行星工业 ×${Q.format(industryBoost(o))}${max?'':` → ×${Q.format(industryBoost(projected))}`}`:`${Q.format(facilityRate(o,facilityKey))}${max?'':` → ${Q.format(facilityRate(projected,facilityKey))}`} Legacy/s`;
+    const wait=Math.max(0,Math.ceil((arrivalAt(o,f.body)??0)-o.elapsed)),flight=flightTo(o,f.body),leg=flight?{from:flight.from,via:flight.via,seconds:Math.round(flight.arriveAt-flight.departAt)}:route(o,f.body);
+    v['#solar-facility-cost']=max?'已建满':`${state==='transit'?'已支付 ':''}${Q.format(f.costs[level])} Legacy`;
+    v['#solar-facility-route']=level?'原地扩建 · 无需额外方舟':leg.blocked?'':`${[leg.from,...leg.via,f.body].map(placeName).join(' → ')} · ${leg.seconds} 秒 · 占用 1 艘方舟`;
+    v['#solar-facility-build']=state==='transit'?'方舟航行中':max?'设施已全部建成':level?'扩建设施':'派出建造方舟 ↗';
+    v['#solar-facility-hint']={ready:level?'购买后立即生效。':'方舟抵达后建成，开始回流收益。',legacy:'遗产不足。',transit:`还有 ${wait} 秒抵达，抵达后可继续扩建。`,prerequisite:facilityNeed(o,facilityKey),max:'可在星图继续研究产能科技。',locked:'远航后开放。'}[state];
     v['#solar-facility-build@disabled']=state!=='ready';
   }
   return v;
@@ -127,7 +141,7 @@ export function bodyStatus(o,b){
     if(!arrived(o,b.id))return `先遣编队航行中 · 还有 ${Math.ceil(at-o.elapsed)} 秒抵达`;
     const port=o.solar.talents.harbor?'火星港 · ':'',world=o.solar.colonies.mars;
     if(world.phase==='winter')return `${port}火星核冬天 · 还有 ${Math.ceil(world.remaining)} 秒`;
-    return o.solar.talents.dome?`${port}火星穹顶 · ${world.civs.length+world.uplifted.length} / ${domeCapacity(o)} 居民${world.uplifted.length?` · ${world.uplifted.length} 个升格文明`:''}${world.wars.length?` · ${world.wars.length} 场战争`:''} · +${Q.format(colonyRate(o))} Legacy/s`:`${port||'先遣编队已停泊 · '}可以建起火星穹顶`;
+    return o.solar.talents.dome?`${port}火星穹顶 · ${colonyCount(o)-o.solar.transfers.length} / ${domeCapacity(o)} 居民${world.uplifted.length?` · ${world.uplifted.length} 个升格文明`:''}${world.wars.length?` · ${world.wars.length} 场战争`:''} · +${Q.format(colonyRate(o))} Legacy/s`:`${port||'先遣编队已停泊 · '}可以建起火星穹顶`;
   }
   if(!key)return '勘察记录 · 尚无驻地';
   if(flightTo(o,b.id))return `方舟航行中 · 还有 ${Math.ceil(at-o.elapsed)} 秒抵达`;

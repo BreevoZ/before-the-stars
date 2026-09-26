@@ -1,12 +1,13 @@
 // The same visual vocabulary as Earth and the Moon: broad muted regions,
 // shallow craters and a soft night mask. All marks live on a rotating sphere;
 // there are no raster surface textures or screen-space scrolling stripes.
+import { sphereBase, sphereNight, surfacePolygon as polygon } from './sphere-material.js';
 import { surfaceOf } from './solar-bodies.js';
+import { drawLunarSphere } from './lunar-render.js';
 import { drawEarthSphere } from './orbital-render.js';
-const TAU=Math.PI*2,clamp=(v,a=0,b=1)=>Math.max(a,Math.min(b,v));
+const TAU=Math.PI*2;
 const noise=n=>{n=Math.imul(n^(n>>>16),0x21f0aaad);n=Math.imul(n^(n>>>15),0x735a2d97);return((n^(n>>>15))>>>0)/4294967296;};
 const disc=(c,x,y,r,color)=>{c.fillStyle=color;c.beginPath();c.arc(x,y,r,0,TAU);c.fill();};
-const path=(c,points)=>{c.beginPath();points.forEach((p,i)=>i?c.lineTo(p.x,p.y):c.moveTo(p.x,p.y));};
 // Shared with surface settlements: marks on the far hemisphere have z < 0.
 export function surfacePoint(lon,lat,spin=0,tilt=0){
   const a=lon+spin,c=Math.cos(lat),x=Math.sin(a)*c,y=-Math.sin(lat),ct=Math.cos(tilt),st=Math.sin(tilt);
@@ -14,15 +15,6 @@ export function surfacePoint(lon,lat,spin=0,tilt=0){
 }
 export const spinOf=(body,time)=>time/(surfaceOf(body).spin??180)*TAU;
 export const terrainOffset=body=>noise([...body.id].reduce((n,ch)=>n*31+ch.charCodeAt(0),0)>>>0)*TAU;
-// Clip small surface polygons against the horizon before projecting them.
-function polygon(c,points,r,color){
-  const visible=[];
-  for(let i=0;i<points.length;i++){
-    const a=points[i],b=points[(i+1)%points.length];if(a.z>=0)visible.push(a);
-    if((a.z>=0)!==(b.z>=0)){const t=a.z/(a.z-b.z);visible.push({x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t});}
-  }
-  if(visible.length<3)return;path(c,visible.map(p=>({x:p.x*r,y:p.y*r})));c.closePath();c.fillStyle=color;c.fill();
-}
 function patch(c,r,spin,tilt,lon,lat,rx,ry,color,seed=0,ragged=0){
   const points=Array.from({length:36},(_,i)=>{const a=i/36*TAU,k=1+ragged*Math.sin(a*5+seed);return surfacePoint(lon+Math.cos(a)*rx*k/Math.max(.3,Math.cos(lat)),lat+Math.sin(a)*ry*k,spin,tilt);});
   polygon(c,points,r,color);
@@ -108,27 +100,6 @@ function rocky(c,body,r,spin,tilt){
       c.strokeStyle='#e2e6d033';c.lineWidth=Math.max(.45,r*.003);c.beginPath();c.arc(0,0,cr,-.9,.9);c.stroke();});
   }
 }
-// Vector isophotes on the sphere. Each band follows n · sun, so the
-// terminator curves round the globe; there is no low-resolution mask bitmap.
-const nightPaths=new WeakMap();
-function shadeNight(c,r,angle){
-  const doc=c.canvas.ownerDocument;let bands=nightPaths.get(doc);
-  if(!bands){bands=[];const Path=doc.defaultView.Path2D,steps=32;
-    for(let layer=0;layer<steps;layer++){
-      const k=(.5-layer/steps)/2.8,path=new Path(),points=[];
-      for(let j=0;j<=96;j++){
-        const y=-1+j/48,R=Math.sqrt(Math.max(0,1-y*y)),limit=.94*R;
-        const x=k<=-limit?-R:k>=limit?R:(.94*k-.34*Math.sqrt(Math.max(0,.9992*R*R-k*k)))/.9992;
-        points.push([x,y]);
-      }
-      points.forEach(([x,y],i)=>i?path.lineTo(x,y):path.moveTo(x,y));
-      for(let j=96;j>=0;j--){const y=-1+j/48;path.lineTo(-Math.sqrt(Math.max(0,1-y*y)),y);}path.closePath();
-      const step=158/255/steps;bands.push({path,alpha:step/(1-layer*step)});
-    }nightPaths.set(doc,bands);
-  }
-  c.save();c.rotate(angle);c.scale(r,r);
-  for(const {path,alpha}of bands){c.fillStyle=`rgba(7,16,23,${alpha})`;c.fill(path);}c.restore();
-}
 function rings(c,r,settings,front){
   c.save();c.rotate(settings.tilt);c.scale(1,.32);
   const count=settings.faint?5:110,step=(settings.outer-settings.inner)/count,start=front?0:Math.PI;
@@ -143,11 +114,12 @@ function rings(c,r,settings,front){
 export function drawPlanetSphere(ctx,body,x,y,r,{time=0,sunAngle=-.4,reducedMotion=false,appearance={}}={}){
   time=reducedMotion?0:time;
   if(body.id==='earth'){drawEarthSphere(ctx,x,y,r,{time,reducedMotion});return;}
+  if(body.id==='moon'){drawLunarSphere(ctx,x,y,r,{rotation:time/180*TAU,sun:[Math.cos(sunAngle)*.94,Math.sin(sunAngle)*.94,.34]});return;}
   const profile=surfaceOf(body),spin=spinOf(body,reducedMotion?0:time),tilt=profile.tilt??.12;
   const palette=PALETTES[body.id]??(body.surface==='ice'?['#b8c3b5','#a0afa3','#697d76']:body.surface==='volcanic'?['#b8ae85','#9b9876','#697766']:['#a9b3a1','#7f8f83','#56675f']);
   ctx.save();ctx.translate(x,y);if(profile.rings)rings(ctx,r,profile.rings,false);
   if(profile.atmosphere){const edge=1.07+(appearance.terraform??0)*.015,glow=ctx.createRadialGradient(0,0,r*.97,0,0,r*edge);glow.addColorStop(0,`${profile.atmosphere}00`);glow.addColorStop(.5,`${profile.atmosphere}20`);glow.addColorStop(1,`${profile.atmosphere}00`);ctx.save();ctx.globalAlpha*=1-(appearance.winter??0)*.8;disc(ctx,0,0,r*edge,glow);ctx.restore();}
-  const g=ctx.createRadialGradient(Math.cos(sunAngle)*r*.25,Math.sin(sunAngle)*r*.25,r*.1,0,0,r);g.addColorStop(0,palette[0]);g.addColorStop(.7,palette[1]);g.addColorStop(1,palette[2]);disc(ctx,0,0,r,g);
+  const sun=[Math.cos(sunAngle)*.94,Math.sin(sunAngle)*.94,.34];sphereBase(ctx,r,palette,sun);
   ctx.save();ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.clip();
   if(profile.surface==='gas')gas(ctx,body,r,spin,tilt);
   else if(profile.surface==='cloud')cloud(ctx,body,r,spin,tilt);
@@ -163,7 +135,7 @@ export function drawPlanetSphere(ctx,body,x,y,r,{time=0,sunAngle=-.4,reducedMoti
     const dust=ctx.createRadialGradient(r*.3,-r*.2,0,r*.3,-r*.2,r*(.1+spread*2));dust.addColorStop(0,'#8b8e80e8');dust.addColorStop(.6,'#727971bd');dust.addColorStop(1,'#72797100');disc(ctx,r*.3,-r*.2,r*(.1+spread*2),dust);
     for(let i=0;i<14;i++)patch(ctx,r,spin*.2+time*.003,tilt,i*2.4,Math.sin(i)*1.1,.5,.11,'#b0afa116');ctx.restore();
   }
-  shadeNight(ctx,r,sunAngle);ctx.restore();
+  sphereNight(ctx,r,sun);ctx.restore();
   ctx.strokeStyle='#acbca42b';ctx.lineWidth=.65;ctx.beginPath();ctx.arc(0,0,r,0,TAU);ctx.stroke();
   if(profile.rings)rings(ctx,r,profile.rings,true);ctx.restore();
 }
